@@ -8,6 +8,13 @@ export interface FinanceDatabase {
 
 /** Abre o banco, aplica migrations pendentes e recusa bancos de uma versão mais nova do app. */
 export function openDatabase(driver: Driver): FinanceDatabase {
+  const tables = driver
+    .all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    .map((row) => row.name);
+  if (tables.length > 0 && !tables.includes("schema_migrations")) {
+    throw new Error("Este arquivo SQLite não é um banco compatível com o aplicativo.");
+  }
+
   driver.exec("PRAGMA foreign_keys = ON");
   driver.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
 

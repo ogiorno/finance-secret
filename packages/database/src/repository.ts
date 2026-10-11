@@ -1,5 +1,5 @@
 import { buildTransfer, validateTransaction, type CategoryType } from "@finance/core";
-import type { Driver } from "./driver";
+import type { Driver, SqlValue } from "./driver";
 import type { FinanceDatabase } from "./open";
 
 export type AccountType = "checking" | "savings" | "cash" | "wallet" | "credit_card" | "loan";
@@ -81,6 +81,48 @@ export interface MonthSummary {
   resultCents: number;
 }
 
+export interface CategorySpend {
+  categoryId: number;
+  name: string;
+  totalCents: number;
+}
+
+export interface TransactionListItem {
+  id: number;
+  accountId: number;
+  accountName: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  type: "income" | "expense" | "transfer";
+  /** Positivo para receita e despesa; com sinal para pernas de transferência. */
+  amountCents: number;
+  description: string;
+  date: string;
+  status: TransactionStatus;
+  transferGroupId: number | null;
+}
+
+export interface TransactionFilter {
+  /** `YYYY-MM`. */
+  month?: string;
+  accountId?: number;
+  limit?: number;
+}
+
+export const DEFAULT_CATEGORIES: { name: string; type: CategoryType; children?: string[] }[] = [
+  { name: "Moradia", type: "expense", children: ["Aluguel", "Condomínio", "Contas de casa"] },
+  { name: "Mercado", type: "expense" },
+  { name: "Restaurantes", type: "expense" },
+  { name: "Transporte", type: "expense" },
+  { name: "Saúde", type: "expense" },
+  { name: "Educação", type: "expense" },
+  { name: "Lazer", type: "expense" },
+  { name: "Outras despesas", type: "expense" },
+  { name: "Salário", type: "income" },
+  { name: "Rendimentos", type: "income" },
+  { name: "Outras receitas", type: "income" },
+];
+
 export interface FinanceRepository {
   createAccount(input: NewAccount): Account;
   createCategory(input: NewCategory): Category;
@@ -90,6 +132,18 @@ export interface FinanceRepository {
   deleteTransaction(id: number): void;
   /** Receitas e despesas `posted` de um mês `YYYY-MM`; transferências nunca entram. */
   getMonthSummary(month: string): MonthSummary;
+  /** Contas ativas, na ordem de criação. */
+  listAccounts(): Account[];
+  /** Categorias ativas. */
+  listCategories(): Category[];
+  /** Cria as categorias padrão em PT-BR, só se ainda não houver nenhuma. */
+  seedDefaultCategories(): void;
+  /** Soma dos saldos das contas ativas (cartões e empréstimos entram negativos). */
+  getTotalBalance(): number;
+  /** Despesas `posted` do mês, agrupadas pela categoria de nível superior, maiores primeiro. */
+  getExpensesByCategory(month: string): CategorySpend[];
+  /** Lançamentos mais recentes primeiro (data, depois id). */
+  listTransactions(filter?: TransactionFilter): TransactionListItem[];
   /** Saldo = saldo inicial + lançamentos `posted` (transferências com sinal). */
   getBalance(accountId: number): number;
 }
@@ -201,7 +255,7 @@ class SqlFinanceRepository implements FinanceRepository {
   }
 
   getMonthSummary(month: string): MonthSummary {
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("Mês inválido: use o formato AAAA-MM.");
+    assertMonth(month);
     const [row] = this.db.all<{ income: number; expense: number }>(
       `SELECT
          COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents END), 0) AS income,
@@ -215,6 +269,116 @@ class SqlFinanceRepository implements FinanceRepository {
     return { incomeCents, expenseCents, resultCents: incomeCents - expenseCents };
   }
 
+  listAccounts(): Account[] {
+    return this.db
+      .all<{ id: number; name: string; type: AccountType; opening_balance_cents: number }>(
+        "SELECT id, name, type, opening_balance_cents FROM accounts WHERE is_active = 1 ORDER BY id",
+      )
+      .map((row) => ({ id: row.id, name: row.name, type: row.type, openingBalanceCents: row.opening_balance_cents }));
+  }
+
+  listCategories(): Category[] {
+    return this.db
+      .all<{ id: number; name: string; type: CategoryType; parent_id: number | null }>(
+        "SELECT id, name, type, parent_id FROM categories WHERE is_active = 1 ORDER BY id",
+      )
+      .map((row) => ({ id: row.id, name: row.name, type: row.type, parentId: row.parent_id }));
+  }
+
+  seedDefaultCategories(): void {
+    this.db.transaction(() => {
+      const [row] = this.db.all<{ total: number }>("SELECT COUNT(*) AS total FROM categories");
+      if ((row?.total ?? 0) > 0) return;
+      for (const category of DEFAULT_CATEGORIES) {
+        const parent = this.createCategory({ name: category.name, type: category.type });
+        for (const child of category.children ?? []) {
+          this.createCategory({ name: child, type: category.type, parentId: parent.id });
+        }
+      }
+    });
+  }
+
+  getTotalBalance(): number {
+    const [row] = this.db.all<{ total: number }>(
+      `SELECT
+         (SELECT COALESCE(SUM(opening_balance_cents), 0) FROM accounts WHERE is_active = 1)
+         + (SELECT COALESCE(SUM(CASE t.type WHEN 'expense' THEN -t.amount_cents ELSE t.amount_cents END), 0)
+              FROM transactions t JOIN accounts a ON a.id = t.account_id
+             WHERE a.is_active = 1 AND t.status = 'posted') AS total`,
+    );
+    return row?.total ?? 0;
+  }
+
+  getExpensesByCategory(month: string): CategorySpend[] {
+    assertMonth(month);
+    return this.db.all<CategorySpend>(
+      `SELECT COALESCE(p.id, c.id) AS categoryId, COALESCE(p.name, c.name) AS name, SUM(t.amount_cents) AS totalCents
+         FROM transactions t
+         JOIN categories c ON c.id = t.category_id
+         LEFT JOIN categories p ON p.id = c.parent_id
+        WHERE t.type = 'expense' AND t.status = 'posted' AND substr(t.transaction_date, 1, 7) = ?
+        GROUP BY COALESCE(p.id, c.id), COALESCE(p.name, c.name)
+        ORDER BY totalCents DESC, name`,
+      [month],
+    );
+  }
+
+  listTransactions(filter: TransactionFilter = {}): TransactionListItem[] {
+    const where: string[] = [];
+    const params: SqlValue[] = [];
+    if (filter.month !== undefined) {
+      assertMonth(filter.month);
+      where.push("substr(t.transaction_date, 1, 7) = ?");
+      params.push(filter.month);
+    }
+    if (filter.accountId !== undefined) {
+      where.push("t.account_id = ?");
+      params.push(filter.accountId);
+    }
+    let limit = "";
+    if (filter.limit !== undefined) {
+      limit = " LIMIT ?";
+      params.push(filter.limit);
+    }
+
+    return this.db
+      .all<{
+        id: number;
+        account_id: number;
+        account_name: string;
+        category_id: number | null;
+        category_name: string | null;
+        type: TransactionListItem["type"];
+        amount_cents: number;
+        description: string;
+        transaction_date: string;
+        status: TransactionStatus;
+        transfer_group_id: number | null;
+      }>(
+        `SELECT t.id, t.account_id, a.name AS account_name, t.category_id, c.name AS category_name, t.type,
+                t.amount_cents, t.description, t.transaction_date, t.status, t.transfer_group_id
+           FROM transactions t
+           JOIN accounts a ON a.id = t.account_id
+           LEFT JOIN categories c ON c.id = t.category_id
+          ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+          ORDER BY t.transaction_date DESC, t.id DESC${limit}`,
+        params,
+      )
+      .map((row) => ({
+        id: row.id,
+        accountId: row.account_id,
+        accountName: row.account_name,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        type: row.type,
+        amountCents: row.amount_cents,
+        description: row.description,
+        date: row.transaction_date,
+        status: row.status,
+        transferGroupId: row.transfer_group_id,
+      }));
+  }
+
   private requireAccount(id: number): { opening_balance_cents: number } {
     const account = this.db.all<{ opening_balance_cents: number }>(
       "SELECT opening_balance_cents FROM accounts WHERE id = ?",
@@ -223,4 +387,8 @@ class SqlFinanceRepository implements FinanceRepository {
     if (!account) throw new Error("Conta não encontrada.");
     return account;
   }
+}
+
+function assertMonth(month: string): void {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("Mês inválido: use o formato AAAA-MM.");
 }
