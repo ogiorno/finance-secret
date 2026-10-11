@@ -21,7 +21,7 @@
 
 <Card class={cn("gap-1", className)} data-slot="kpi" {...rest}>
   <div class="px-5 text-sm text-muted-foreground">{label}</div>
-  <div class="px-5 text-2xl font-semibold">{@render children()}</div>
+  <div class="px-5 text-lg font-semibold sm:text-2xl">{@render children()}</div>
   {#if hint}
     <div class="px-5 text-xs text-muted-foreground">{@render hint()}</div>
   {/if}
