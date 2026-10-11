@@ -15,6 +15,7 @@ export { default as Input } from "./components/Input.svelte";
 export { default as Kpi } from "./components/Kpi.svelte";
 export { default as Label } from "./components/Label.svelte";
 export { default as Money } from "./components/Money.svelte";
+export { default as NativeSelect } from "./components/NativeSelect.svelte";
 export { default as Progress } from "./components/Progress.svelte";
 export { default as Separator } from "./components/Separator.svelte";
 export { default as Skeleton } from "./components/Skeleton.svelte";
