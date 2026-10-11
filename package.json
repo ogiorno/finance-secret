@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=24" },
-  "workspaces": ["apps/*", "packages/*"],
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,8 +21,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.64.0",
     "eslint": "^9.0.0",
     "prettier": "^3.3.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^3.0.0"

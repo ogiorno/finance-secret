@@ -1,0 +1,9 @@
+{
+  // Hospedagem estática do frontend (Offline mode). Só publica apps/web/build: nada de banco, .env ou backups.
+  "name": "finance-dashboard",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./apps/web/build",
+    "not_found_handling": "single-page-application"
+  }
+}

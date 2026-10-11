@@ -8,3 +8,7 @@ backups/
 .svelte-kit/
 build/
 dist/
+!apps/web/static/demo.db
+test-results/
+playwright-report/
+.wrangler/

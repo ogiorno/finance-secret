@@ -1,0 +1,4 @@
+@import "@finance/ui/theme.css";
+
+/* Tailwind precisa varrer os componentes do design system para gerar suas classes. */
+@source "../../../packages/ui/src";

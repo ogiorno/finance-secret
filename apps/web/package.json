@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/finalize-build.mjs",
     "preview": "vite preview",
+    "e2e": "playwright test",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "demo-db": "node --experimental-strip-types scripts/make-demo-db.ts"
+    "demo-db": "tsx scripts/make-demo-db.ts"
   },
   "dependencies": {
     "@finance/core": "*",
