@@ -17,7 +17,8 @@ describe("browser database file handling", () => {
     const db = createEmptyDatabase(SQL);
     const account = db.repo.createAccount({ name: "Conta", type: "checking", openingBalanceCents: 1000 });
     const market = db.repo.listCategories().find((c) => c.name === "Mercado");
-    db.repo.addTransaction({ accountId: account.id, categoryId: market!.id, type: "expense", amountCents: 250, date: "2026-03-10" });
+    if (!market) throw new Error("categoria padrão ausente");
+    db.repo.addTransaction({ accountId: account.id, categoryId: market.id, type: "expense", amountCents: 250, date: "2026-03-10" });
 
     const reopened = openDatabaseFromBytes(SQL, db.exportBytes());
 
