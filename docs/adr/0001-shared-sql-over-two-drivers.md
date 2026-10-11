@@ -1,0 +1,3 @@
+# One SQL implementation shared by browser and server
+
+`packages/database` holds the only copy of queries, migrations and schema validation, written against a minimal driver interface (`exec`, `run`, `all`, `transaction`) with two adapters: sql.js (browser) and better-sqlite3 (server). `BrowserFinanceRepository` uses it directly; the server uses it too, and `ServerFinanceRepository` is just an HTTP client of that API. We rejected separate query sets per mode because Offline and Connected mode would drift apart; the cost is that every query must stay within what both drivers support, and the same test suite runs against both. Imported older databases are migrated in the browser by the same migrations.
