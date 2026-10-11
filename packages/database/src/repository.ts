@@ -75,11 +75,21 @@ export interface Transfer {
   legs: [TransferLegRecord, TransferLegRecord];
 }
 
+export interface MonthSummary {
+  incomeCents: number;
+  expenseCents: number;
+  resultCents: number;
+}
+
 export interface FinanceRepository {
   createAccount(input: NewAccount): Account;
   createCategory(input: NewCategory): Category;
   addTransaction(input: NewIncomeOrExpense): Transaction;
   addTransfer(input: NewTransfer): Transfer;
+  /** Remove o lançamento; para transferência, remove as duas pernas. */
+  deleteTransaction(id: number): void;
+  /** Receitas e despesas `posted` de um mês `YYYY-MM`; transferências nunca entram. */
+  getMonthSummary(month: string): MonthSummary;
   /** Saldo = saldo inicial + lançamentos `posted` (transferências com sinal). */
   getBalance(accountId: number): number;
 }
@@ -175,6 +185,34 @@ class SqlFinanceRepository implements FinanceRepository {
       [accountId],
     );
     return account.opening_balance_cents + (row?.total ?? 0);
+  }
+
+  deleteTransaction(id: number): void {
+    const [row] = this.db.all<{ transfer_group_id: number | null }>(
+      "SELECT transfer_group_id FROM transactions WHERE id = ?",
+      [id],
+    );
+    if (!row) throw new Error("Lançamento não encontrado.");
+    if (row.transfer_group_id === null) {
+      this.db.run("DELETE FROM transactions WHERE id = ?", [id]);
+    } else {
+      this.db.run("DELETE FROM transactions WHERE transfer_group_id = ?", [row.transfer_group_id]);
+    }
+  }
+
+  getMonthSummary(month: string): MonthSummary {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("Mês inválido: use o formato AAAA-MM.");
+    const [row] = this.db.all<{ income: number; expense: number }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents END), 0) AS income,
+         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_cents END), 0) AS expense
+       FROM transactions
+       WHERE status = 'posted' AND substr(transaction_date, 1, 7) = ?`,
+      [month],
+    );
+    const incomeCents = row?.income ?? 0;
+    const expenseCents = row?.expense ?? 0;
+    return { incomeCents, expenseCents, resultCents: incomeCents - expenseCents };
   }
 
   private requireAccount(id: number): { opening_balance_cents: number } {

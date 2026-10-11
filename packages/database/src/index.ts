@@ -7,6 +7,7 @@ export {
   type AccountType,
   type Category,
   type FinanceRepository,
+  type MonthSummary,
   type NewAccount,
   type NewCategory,
   type NewIncomeOrExpense,
