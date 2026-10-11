@@ -1,4 +1,4 @@
-import { validateTransaction, type CategoryType } from "@finance/core";
+import { buildTransfer, validateTransaction, type CategoryType } from "@finance/core";
 import type { Driver } from "./driver";
 import type { FinanceDatabase } from "./open";
 
@@ -53,10 +53,33 @@ export interface NewIncomeOrExpense {
   status?: TransactionStatus;
 }
 
+export interface NewTransfer {
+  fromAccountId: number;
+  toAccountId: number;
+  amountCents: number;
+  /** Data local, YYYY-MM-DD. */
+  date: string;
+  description?: string;
+}
+
+export interface TransferLegRecord {
+  id: number;
+  accountId: number;
+  /** Com sinal: saída negativa, entrada positiva. */
+  amountCents: number;
+}
+
+export interface Transfer {
+  groupId: number;
+  /** Saída primeiro, entrada depois. */
+  legs: [TransferLegRecord, TransferLegRecord];
+}
+
 export interface FinanceRepository {
   createAccount(input: NewAccount): Account;
   createCategory(input: NewCategory): Category;
   addTransaction(input: NewIncomeOrExpense): Transaction;
+  addTransfer(input: NewTransfer): Transfer;
   /** Saldo = saldo inicial + lançamentos `posted` (transferências com sinal). */
   getBalance(accountId: number): number;
 }
@@ -121,6 +144,27 @@ class SqlFinanceRepository implements FinanceRepository {
       date: input.date,
       status,
     };
+  }
+
+  addTransfer(input: NewTransfer): Transfer {
+    const legs = buildTransfer({ ...input, description: input.description ?? "" });
+    return this.db.transaction(() => {
+      this.requireAccount(input.fromAccountId);
+      this.requireAccount(input.toAccountId);
+      const [row] = this.db.all<{ next: number }>("SELECT COALESCE(MAX(transfer_group_id), 0) + 1 AS next FROM transactions");
+      const groupId = row?.next ?? 1;
+      const now = new Date().toISOString();
+      const records = legs.map((leg) => {
+        const { lastInsertRowid } = this.db.run(
+          `INSERT INTO transactions
+             (account_id, type, amount_cents, description, transaction_date, transfer_group_id, created_at, updated_at)
+           VALUES (?, 'transfer', ?, ?, ?, ?, ?, ?)`,
+          [leg.accountId, leg.amountCents, leg.description, leg.date, groupId, now, now],
+        );
+        return { id: lastInsertRowid, accountId: leg.accountId, amountCents: leg.amountCents };
+      });
+      return { groupId, legs: records as [TransferLegRecord, TransferLegRecord] };
+    });
   }
 
   getBalance(accountId: number): number {

@@ -10,6 +10,9 @@ export {
   type NewAccount,
   type NewCategory,
   type NewIncomeOrExpense,
+  type NewTransfer,
   type Transaction,
+  type Transfer,
+  type TransferLegRecord,
   type TransactionStatus,
 } from "./repository";
