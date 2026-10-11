@@ -3,5 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./sqljs": "./src/drivers/sqljs.ts",
+    "./better-sqlite3": "./src/drivers/better-sqlite3.ts"
+  },
+  "dependencies": {
+    "@finance/core": "*",
+    "better-sqlite3": "^12.0.0",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/sql.js": "^1.4.0"
+  }
 }
