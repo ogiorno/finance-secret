@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Projeto `finance-secret`. Skills de serviços financeiros (origem: https://github.com/anthropics/financial-services) instaladas em `.claude/skills/`.
+Projeto `finance-secret`. Skills instaladas em `.claude/skills/`:
+- Serviços financeiros (origem: https://github.com/anthropics/financial-services)
+- Engenharia e produtividade (origem: https://github.com/mattpocock/skills, MIT — licença em `.claude/MATTPOCOCK-SKILLS-LICENSE`)
 
 **Regra para o agente:** antes de executar qualquer tarefa, verifique a tabela abaixo. Se a tarefa casar com alguma skill, USE a skill (invoque-a / leia `.claude/skills/<nome>/SKILL.md`) em vez de improvisar.
 
@@ -84,3 +86,66 @@ Projeto `finance-secret`. Skills de serviços financeiros (origem: https://githu
 | `returns-analysis` | Build quick IRR/MOIC sensitivity tables for PE deal evaluation. Models returns across entry multiple, leverage, exit multiple, growth, and hold period scenarios. Use when sizing up a deal, stress-testing assumptions, or preparing IC returns exhibits. Triggers on "returns analysis", "IRR sensitivity" | `.claude/skills/returns-analysis/SKILL.md` |
 | `unit-economics` | Analyze unit economics for PE targets — ARR cohorts, LTV/CAC, net retention, payback periods, revenue quality, and margin waterfall. Essential for software/SaaS, recurring revenue, and subscription businesses. Use when evaluating revenue quality, building a cohort analysis, or assessing customer eco | `.claude/skills/unit-economics/SKILL.md` |
 | `value-creation-plan` | Structure post-acquisition value creation plans with revenue, cost, and operational levers mapped to an EBITDA bridge. Includes 100-day priorities, KPI targets, and accountability frameworks. Use when planning post-close execution, preparing operating partner materials, or building a board-ready val | `.claude/skills/value-creation-plan/SKILL.md` |
+
+## Skills de engenharia e produtividade (mattpocock/skills)
+
+Valem para qualquer trabalho de código, planejamento ou documentação do projeto. Antes de começar, case a tarefa com a tabela; se casar, USE a skill.
+
+Skills marcadas como **manual** têm `disable-model-invocation`: só rodam quando o usuário digitar `/<nome>`. Não as invoque por conta própria; se a tarefa casar, sugira o comando ao usuário.
+
+Antes de usar as skills de issue tracker (`to-spec`, `to-tickets`, `triage`, `wayfinder`, `implement*`), rode uma vez `/setup-matt-pocock-skills` para configurar tracker, labels e layout de docs. Se não estiver configurado, rode o setup antes.
+
+### engineering
+
+| Skill | Quando usar | Arquivo |
+|---|---|---|
+| `tdd` | Construir feature ou corrigir bug test-first (red-green-refactor), ou quando pedirem testes de integração. | `.claude/skills/tdd/SKILL.md` |
+| `diagnosing-bugs` | Algo quebrado, lançando erro, falhando ou lento; "diagnose" / "debug this". Use antes de tentar correções no escuro. | `.claude/skills/diagnosing-bugs/SKILL.md` |
+| `code-review` | Revisar branch, PR ou mudanças em andamento ("review since X") contra os padrões do repo e o spec/issue de origem. | `.claude/skills/code-review/SKILL.md` |
+| `pr` | Escrever o corpo de um Pull Request. | `.claude/skills/pr/SKILL.md` |
+| `codebase-design` | Desenhar ou melhorar interface de módulo, decidir onde fica um seam, tornar código mais testável ou navegável por IA (vocabulário de deep modules). | `.claude/skills/codebase-design/SKILL.md` |
+| `domain-modeling` | Discutir terminologia do domínio, escrever/editar `GLOSSARY.md` ou registrar/editar um ADR. | `.claude/skills/domain-modeling/SKILL.md` |
+| `prototype` | Protótipo descartável para responder dúvida de design: validar modelo de estado/lógica ou explorar como a UI deve ser. | `.claude/skills/prototype/SKILL.md` |
+| `research` | Pesquisar um tema/API/documentação em fontes primárias e salvar os achados em Markdown no repo. | `.claude/skills/research/SKILL.md` |
+| `wizard` | Gerar wizard bash interativo para passos que só um humano pode fazer (credenciais, segredos de CI, dashboards de terceiros, migração/cutover). Não usar para passos que o agente executa sozinho. | `.claude/skills/wizard/SKILL.md` |
+| `ask-matt` (manual) | Descobrir qual skill/fluxo deste conjunto serve à situação (roteador). | `.claude/skills/ask-matt/SKILL.md` |
+| `setup-matt-pocock-skills` (manual) | Configuração única: issue tracker, vocabulário de labels de triagem e layout de docs. | `.claude/skills/setup-matt-pocock-skills/SKILL.md` |
+| `grill-with-docs` (manual) | Entrevista implacável para afiar um plano/design, criando ADRs e glossário no processo. | `.claude/skills/grill-with-docs/SKILL.md` |
+| `to-spec` (manual) | Transformar a conversa atual em spec e publicar no issue tracker (sem entrevista). | `.claude/skills/to-spec/SKILL.md` |
+| `to-tickets` (manual) | Quebrar plano/spec em tickets tracer-bullet com dependências, publicados no tracker. | `.claude/skills/to-tickets/SKILL.md` |
+| `implement` (manual) | Implementar trabalho a partir de spec ou conjunto de tickets. | `.claude/skills/implement/SKILL.md` |
+| `implement-spec` (manual) | Implementar em código o resultado de `/to-spec` + `/to-tickets`. | `.claude/skills/implement-spec/SKILL.md` |
+| `wayfinder` (manual) | Planejar trabalho grande demais para uma sessão, como mapa de tickets de decisão no tracker. | `.claude/skills/wayfinder/SKILL.md` |
+| `triage` (manual) | Mover issues/PRs externos por estados de triagem, verificar e escrever briefs prontos para agente. | `.claude/skills/triage/SKILL.md` |
+| `improve-codebase-architecture` (manual) | Varrer o código atrás de oportunidades de aprofundar módulos e apresentar relatório HTML. | `.claude/skills/improve-codebase-architecture/SKILL.md` |
+| `retro` (manual) | Retrospectiva de uma sessão de código. | `.claude/skills/retro/SKILL.md` |
+
+### productivity
+
+| Skill | Quando usar | Arquivo |
+|---|---|---|
+| `grilling` | Stress-test de plano, decisão ou ideia; quando o usuário usar frases de "grill". | `.claude/skills/grilling/SKILL.md` |
+| `writing-for-agents` | Criar/editar skills ou modificar `AGENTS.md` / `CLAUDE.md` (inclui este arquivo). | `.claude/skills/writing-for-agents/SKILL.md` |
+| `grill-me` (manual) | Entrevista implacável para afiar um plano ou design. | `.claude/skills/grill-me/SKILL.md` |
+| `handoff` (manual) | Compactar a conversa em documento de handoff para outro agente. | `.claude/skills/handoff/SKILL.md` |
+| `teach` (manual) | Ensinar ao usuário uma nova habilidade ou conceito neste workspace. | `.claude/skills/teach/SKILL.md` |
+| `to-questionnaire` (manual) | Transformar uma decisão que o usuário não consegue responder sozinho em questionário para outra pessoa. | `.claude/skills/to-questionnaire/SKILL.md` |
+| `wait-what` (manual) | A última mensagem não foi compreendida: reapresentar. | `.claude/skills/wait-what/SKILL.md` |
+
+## Agent skills
+
+### Issue tracker
+
+Issues e specs vivem no GitHub Issues (`ogiorno/finance-secret`), via CLI `gh`. Ver `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Vocabulário padrão: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. Ver `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: um `GLOSSARY.md` + `docs/adr/` na raiz. Ver `docs/agents/domain.md`.
+
+## Design system
+
+Toda UI usa `@finance/ui` (`packages/ui`). Cores, raios, sombras e fontes só existem em `packages/ui/src/theme.css`; componentes e telas usam tokens (`bg-primary`, `text-income`), nunca valores literais. Rode `npm run check:tokens -w @finance/ui` após mexer em UI. Detalhes em `docs/design-system.md`.
