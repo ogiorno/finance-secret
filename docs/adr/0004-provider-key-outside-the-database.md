@@ -1,0 +1,3 @@
+# The Assistant's provider and key live outside the SQLite file
+
+The provider URL, API key and model are stored in a configuration file owned by the server (in the app data folder in Desktop mode), never in the SQLite file and never sent to the browser. The `.db` is meant to be exported, copied to a drive and opened in Offline mode, so anything inside it travels with it. We rejected a settings table in the database because it would leak the key every time the file is moved. The cost is that moving to a new machine means entering the key again. The provider is any OpenAI-compatible endpoint (URL, key, model); that covers OpenAI, DeepSeek and OpenRouter.

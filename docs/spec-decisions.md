@@ -23,7 +23,7 @@ Resultado da sessão de grilling. Onde este arquivo e o spec original divergirem
 
 - Um único código SQL para os dois modos (ADR 0001); migrations rodam no navegador e no servidor.
 - Importar banco: versão menor é migrada após oferecer cópia do original; versão maior ou arquivo inválido é rejeitado sem tocar nos dados carregados; limite padrão 50 MB, configurável.
-- Usuário único por instalação. Senha definida por `npm run set-password` (hash argon2 em arquivo de configuração fora do SQLite e do Git). O servidor recusa escutar fora de `127.0.0.1` sem senha. Modo offline não tem auth.
+- Usuário único por instalação. **Sem senha em nenhum modo na primeira versão** (substitui o `set-password` com argon2 da Fase 3; volta na V2). Por isso o servidor escuta somente em `127.0.0.1` e recusa qualquer outro endereço. Modo offline não tem auth.
 - Edição concorrente: `PATCH` envia o `updated_at` visto; servidor responde 409 se mudou. Processo único, SQLite em WAL.
 
 ## Stack
@@ -42,3 +42,14 @@ Resultado da sessão de grilling. Onde este arquivo e o spec original divergirem
 - `_headers` com CSP restritiva (`default-src 'self'`, `connect-src 'self'`, `script-src 'self'` + `wasm-unsafe-eval`, `frame-ancestors 'none'`), `Referrer-Policy: no-referrer`, `Permissions-Policy` restritiva.
 - Web Analytics desligado; limitação (a Cloudflare vê IP e URL, nunca o banco) documentada em `docs/security`.
 - CI: lint, tipos, testes, `npm audit`; falha se o artefato publicado contiver `.db`, `.env` ou `backups/`.
+
+## Cupons, Assistente e Desktop mode (sessão de grilling posterior)
+
+- **Fase 3.5, Cupons e Assistente** (depois do MVP): leitura de **Receipt** e **Assistant**, só onde há servidor. O QR vira um link; o servidor baixa a página e entrega o conteúdo ao modelo, que devolve JSON estruturado. O servidor valida com Zod, o usuário vê uma prévia editável e só então grava. Um Receipt vira uma Transaction `expense` (categoria "Mercado", conta escolhida na importação) mais `receipt_items`; a chave de acesso é `UNIQUE`. Campos que nem todo cupom tem ficam num campo flexível de metadados; o desenho fino fica para a feature.
+- Só `https` e domínios de SEFAZ são baixados; nada de IP nem `localhost`.
+- Provedor: formato compatível com OpenAI (URL, chave, modelo). Chave fora do SQLite (ADR 0004). Alterações pelo Assistant só por **Proposals** (ADR 0003).
+- Sem Tag: a classificação é **Category**. **Recurring bill** é uma lista de controle (nome, valor, periodicidade, vencimento, Category, Fixed ou Discretionary, conta opcional); não gera Transactions e não entra em saldos. Interface: "Fixa" e "Supérflua".
+- Connected mode ganha "Baixar banco" (reaproveita o backup da Fase 3). Offline mode abre, vê e edita todos esses dados, mas não lê cupom nem usa o Assistant.
+- **Fase 3.6, Desktop mode** (só plano): Electron empacota o mesmo servidor e frontend e abre um `.db` escolhido. Sem senha (vale para todos os modos), com token aleatório por abertura. Journal `DELETE` (sem `-wal`/`-shm`) e arquivo de trava com aviso, para pastas sincronizadas por drive. Configuração e chave na pasta de dados do aplicativo.
+- **Vários bancos (Connected mode)**: uma pasta de bancos `.db`, normalmente dois ou três. Um banco ativo por sessão, trocado por um seletor na barra superior; sem totais nem transferências entre bancos. Criar, renomear, trocar, baixar e excluir (digitando o nome). O Assistant só enxerga o ativo; o backup copia todos. O Desktop mode abre um arquivo de cada vez, escolhido pelo usuário.
+- **Fora da primeira versão (V2)**: sincronização e uso em vários dispositivos, Tailscale (antiga Fase 4), senha de acesso em qualquer modo (a do Connected mode da antiga Fase 3 e a do Desktop mode), senha/criptografia do próprio SQLite (ex.: SQLCipher), empréstimos e investimentos com cotação.

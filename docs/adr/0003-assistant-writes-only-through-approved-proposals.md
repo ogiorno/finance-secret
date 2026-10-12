@@ -1,0 +1,3 @@
+# The Assistant changes data only through approved proposals, never raw SQL
+
+The Assistant calls a fixed set of operations (create a Transaction, set a Category, import a Receipt and so on) that reuse the code in `packages/database`. Each call comes back as a Proposal shown to the user, editable, and is applied only after approval. We rejected letting the model write SQL because it would skip the rules the repository enforces (Transfer legs summing to zero, Transaction type matching Category type) and a wrong statement cannot be reviewed or undone. The cost is that every new thing the Assistant can do needs an operation written for it.
