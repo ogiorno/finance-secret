@@ -34,19 +34,21 @@ test("create, edit, export and reopen keeps the data", async ({ page }) => {
   await page.getByRole("button", { name: "Criar banco vazio" }).click();
 
   await page.getByRole("link", { name: "Contas" }).click();
+  await page.getByRole("button", { name: "Nova conta" }).first().click();
   await page.getByLabel("Nome").fill("Conta de teste");
   await page.getByLabel("Saldo inicial").fill("1.000,00");
   await page.getByRole("button", { name: "Criar conta" }).click();
-  await expect(page.getByRole("cell", { name: "Conta de teste" })).toBeVisible();
+  await expect(page.getByText("Conta de teste")).toBeVisible();
 
   await page.getByRole("link", { name: "Lançamentos" }).click();
-  await page.getByLabel("Conta", { exact: true }).first().selectOption({ label: "Conta de teste" });
-  await page.getByLabel("Categoria").selectOption({ label: "Mercado" });
-  await page.getByLabel("Valor (R$)").fill("80,50");
-  await page.getByRole("button", { name: "Salvar" }).click();
-  await expect(page.getByText("Lançamento salvo.")).toBeVisible();
+  await page.getByRole("button", { name: "Novo lançamento" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Conta", { exact: true }).selectOption({ label: "Conta de teste" });
+  await dialog.getByLabel("Categoria", { exact: true }).selectOption({ label: "Mercado" });
+  await dialog.getByLabel("Valor (R$)").fill("80,50");
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(page.getByText("Lançamento salvo")).toBeVisible();
   await expect(page.getByText(/ainda não foram exportadas/i)).toBeVisible();
-
   await page.getByRole("link", { name: "Importar e exportar" }).click();
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /Baixar/ }).click()]);
   const path = await download.path();
@@ -73,4 +75,43 @@ test("an invalid file shows a friendly error and keeps the open database", async
 
   await page.getByRole("link", { name: "Painel" }).first().click();
   await expect(page.getByText("Saldo total")).toBeVisible();
+});
+
+test("transactions: edit with the pencil icon, undo a delete, then delete for good", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Criar banco vazio" }).click();
+
+  await page.getByRole("link", { name: "Contas" }).click();
+  await page.getByRole("button", { name: "Nova conta" }).first().click();
+  await page.getByLabel("Nome").fill("Conta A");
+  await page.getByRole("button", { name: "Criar conta" }).click();
+
+  await page.getByRole("link", { name: "Lançamentos" }).click();
+  await page.getByRole("button", { name: "Novo lançamento" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Conta", { exact: true }).selectOption({ label: "Conta A" });
+  await dialog.getByLabel("Categoria", { exact: true }).selectOption({ label: "Mercado" });
+  await dialog.getByLabel("Valor (R$)").fill("10,00");
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click();
+
+  const row = page.getByRole("listitem").filter({ hasText: "Mercado" });
+  await expect(row).toContainText("10,00");
+
+  await row.hover();
+  await row.getByRole("button", { name: /Editar lançamento/ }).click();
+  await dialog.getByLabel("Valor (R$)").fill("25,00");
+  await dialog.getByRole("button", { name: "Salvar", exact: true }).click();
+  await expect(row).toContainText("25,00");
+
+  await row.hover();
+  await row.getByRole("button", { name: /Excluir lançamento/ }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "Desfazer" }).click();
+  await expect(row).toContainText("25,00");
+
+  await row.hover();
+  await row.getByRole("button", { name: /Excluir lançamento/ }).click();
+  await expect(row).toHaveCount(0);
+  await page.waitForTimeout(5600);
+  await expect(page.getByText("Nada lançado neste mês.")).toBeVisible();
 });

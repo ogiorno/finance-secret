@@ -1,186 +1,247 @@
 <script lang="ts">
-  import { parseBRLToCents } from "@finance/core";
+  import { Plus, Search, X } from "@lucide/svelte";
   import type { TransactionListItem } from "@finance/database";
-  import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Label, Link, NativeSelect, PageHeader } from "@finance/ui";
+  import {
+    Button,
+    Card,
+    CardContent,
+    Dialog,
+    EmptyState,
+    IconButton,
+    Input,
+    Link,
+    NativeSelect,
+    PageHeader,
+    toast,
+  } from "@finance/ui";
+  import { onDestroy } from "svelte";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
-  import TransactionTable from "$lib/TransactionTable.svelte";
+  import { period } from "$lib/period.svelte";
   import { session } from "$lib/session.svelte";
+  import TransactionForm, { type TransactionFormInitial, type TransactionFormValues } from "$lib/TransactionForm.svelte";
+  import TransactionList from "$lib/TransactionList.svelte";
 
-  type Kind = "expense" | "income" | "transfer";
+  const PAGE_SIZE = 100;
 
   const today = new Date();
   const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-  let kind = $state<Kind>("expense");
-  let accountId = $state("");
-  let toAccountId = $state("");
-  let categoryId = $state("");
-  let amount = $state("");
-  let date = $state(todayText);
-  let description = $state("");
-  let pending = $state(false);
-  let error = $state<string | null>(null);
-  let saved = $state(false);
+  /** Última conta usada: o próximo lançamento já vem com ela. */
+  let lastAccount = "";
 
-  let filterMonth = $state("");
   let filterAccount = $state("");
+  let filterCategory = $state("");
+  let search = $state("");
+  let limit = $state(PAGE_SIZE);
+
+  let formOpen = $state(false);
+  let editing = $state<TransactionListItem | null>(null);
+  let formInitial = $state<TransactionFormInitial>(blank());
+
+  // Exclusões aguardam alguns segundos para o "Desfazer"; até lá a linha fica escondida.
+  let pendingDeletes = $state<Record<string, TransactionListItem>>({});
+
+  const deleteKey = (item: TransactionListItem) => (item.transferGroupId !== null ? `g${item.transferGroupId}` : `t${item.id}`);
 
   const data = $derived.by(() => {
     void session.revision;
     const repo = session.repo;
     if (!repo) return null;
     const categories = repo.listCategories();
-    const byId = new Map(categories.map((c) => [c.id, c]));
+    const byId = new Map(categories.map((category) => [category.id, category]));
+    const found = repo.listTransactions({
+      month: period.month,
+      accountId: filterAccount ? Number(filterAccount) : undefined,
+      categoryId: filterCategory ? Number(filterCategory) : undefined,
+      search: search || undefined,
+      limit: limit + 1,
+    });
     return {
       accounts: repo.listAccounts(),
-      categories: categories.map((c) => ({
-        ...c,
-        label: c.parentId ? `${byId.get(c.parentId)?.name ?? ""} › ${c.name}` : c.name,
+      categories: categories.map((category) => ({
+        ...category,
+        label: category.parentId ? `${byId.get(category.parentId)?.name ?? ""} › ${category.name}` : category.name,
       })),
-      items: repo.listTransactions({
-        month: filterMonth || undefined,
-        accountId: filterAccount ? Number(filterAccount) : undefined,
-        limit: 200,
-      }),
+      items: found.slice(0, limit),
+      hasMore: found.length > limit,
     };
   });
 
-  const categoryOptions = $derived(data?.categories.filter((c) => c.type === kind) ?? []);
+  const visible = $derived(data?.items.filter((item) => !(deleteKey(item) in pendingDeletes)) ?? []);
+  const hasFilters = $derived(filterAccount !== "" || filterCategory !== "" || search !== "");
 
-  function submit(event: SubmitEvent) {
-    event.preventDefault();
-    error = null;
-    saved = false;
-    const cents = parseBRLToCents(amount);
-    if (cents === null) {
-      error = "Valor inválido. Exemplo: 80,50";
-      return;
+  function blank(): TransactionFormInitial {
+    return { kind: "expense", accountId: lastAccount, toAccountId: "", categoryId: "", amount: "", date: todayText, description: "", pending: false };
+  }
+
+  function openNew() {
+    editing = null;
+    formInitial = blank();
+    formOpen = true;
+  }
+
+  function openEdit(item: TransactionListItem) {
+    const repo = session.repo;
+    if (!repo) return;
+    let initial: TransactionFormInitial;
+    if (item.type === "transfer") {
+      const legs = repo.listTransactions({ limit: 100000 }).filter((leg) => leg.transferGroupId === item.transferGroupId);
+      const out = legs.find((leg) => leg.amountCents < 0);
+      const into = legs.find((leg) => leg.amountCents > 0);
+      initial = {
+        kind: "transfer",
+        accountId: String(out?.accountId ?? ""),
+        toAccountId: String(into?.accountId ?? ""),
+        categoryId: "",
+        amount: (Math.abs(item.amountCents) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        date: item.date,
+        description: item.description,
+        pending: false,
+      };
+    } else {
+      initial = {
+        kind: item.type,
+        accountId: String(item.accountId),
+        toAccountId: "",
+        categoryId: String(item.categoryId ?? ""),
+        amount: (item.amountCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        date: item.date,
+        description: item.description,
+        pending: item.status === "pending",
+      };
     }
+    editing = item;
+    formInitial = initial;
+    formOpen = true;
+  }
+
+  function save(values: TransactionFormValues, addAnother: boolean): string | null {
     try {
       session.change((repo) => {
-        if (kind === "transfer") {
-          repo.addTransfer({ fromAccountId: Number(accountId), toAccountId: Number(toAccountId), amountCents: cents, date, description });
+        if (values.kind === "transfer") {
+          const transfer = {
+            fromAccountId: values.accountId,
+            toAccountId: values.toAccountId,
+            amountCents: values.amountCents,
+            date: values.date,
+            description: values.description,
+          };
+          if (editing) repo.updateTransaction(editing.id, transfer);
+          else repo.addTransfer(transfer);
         } else {
-          repo.addTransaction({
-            accountId: Number(accountId),
-            categoryId: Number(categoryId),
-            type: kind,
-            amountCents: cents,
-            date,
-            description,
-            status: pending ? "pending" : "posted",
-          });
+          const entry = {
+            accountId: values.accountId,
+            categoryId: values.categoryId,
+            type: values.kind,
+            amountCents: values.amountCents,
+            date: values.date,
+            description: values.description,
+            status: values.pending ? ("pending" as const) : ("posted" as const),
+          };
+          if (editing) repo.updateTransaction(editing.id, entry);
+          else repo.addTransaction(entry);
         }
       });
-      amount = "";
-      description = "";
-      saved = true;
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Não foi possível salvar o lançamento.";
+    } catch (error) {
+      return error instanceof Error ? error.message : "Não foi possível salvar o lançamento.";
     }
+    lastAccount = String(values.accountId);
+    toast.show({ message: editing ? "Lançamento atualizado" : "Lançamento salvo", tone: "success" });
+    if (!addAnother) formOpen = false;
+    else formInitial = { ...blank(), kind: values.kind, accountId: String(values.accountId), date: values.date };
+    return null;
+  }
+
+  function commitDelete(key: string, item: TransactionListItem) {
+    if (!(key in pendingDeletes)) return;
+    const { [key]: _removed, ...rest } = pendingDeletes;
+    pendingDeletes = rest;
+    session.change((repo) => repo.deleteTransaction(item.id));
   }
 
   function remove(item: TransactionListItem) {
-    const what = item.type === "transfer" ? "esta transferência (as duas pontas)" : "este lançamento";
-    if (confirm(`Excluir ${what}?`)) session.change((repo) => repo.deleteTransaction(item.id));
+    const key = deleteKey(item);
+    pendingDeletes = { ...pendingDeletes, [key]: item };
+    toast.show({
+      message: item.type === "transfer" ? "Transferência excluída (as duas pontas)" : "Lançamento excluído",
+      duration: 5000,
+      action: { label: "Desfazer", onclick: () => undefined },
+      onclose: (reason) => {
+        if (reason === "action") {
+          const { [key]: _restored, ...rest } = pendingDeletes;
+          pendingDeletes = rest;
+        } else commitDelete(key, item);
+      },
+    });
+  }
+
+  // Ao sair da tela, o que está esperando o "Desfazer" é gravado de uma vez.
+  onDestroy(() => {
+    for (const [key, item] of Object.entries(pendingDeletes)) commitDelete(key, item);
+  });
+
+  function clearFilters() {
+    filterAccount = "";
+    filterCategory = "";
+    search = "";
+    limit = PAGE_SIZE;
   }
 </script>
 
-<svelte:head><title>Transações · Finanças</title></svelte:head>
-
-<PageHeader title="Transações" />
+<svelte:head><title>Lançamentos · Finanças</title></svelte:head>
 
 {#if !data}
+  <PageHeader title="Lançamentos" />
   <OpenDatabasePanel />
 {:else if data.accounts.length === 0}
+  <PageHeader title="Lançamentos" />
   <Card><CardContent>Crie uma conta em <Link href="/accounts">Contas</Link> antes de lançar.</CardContent></Card>
 {:else}
-  <Card class="mb-4">
-    <CardHeader><CardTitle>Novo lançamento</CardTitle></CardHeader>
-    <CardContent>
-      <form class="grid grid-cols-1 gap-3 md:grid-cols-3" onsubmit={submit}>
-        <Field label="Tipo">
-          {#snippet control(field)}
-            <NativeSelect {...field} bind:value={kind} onchange={() => (categoryId = "")}>
-            <option value="expense">Despesa</option>
-            <option value="income">Receita</option>
-            <option value="transfer">Transferência</option>
-          </NativeSelect>
-          {/snippet}
-        </Field>
-        <Field label={kind === "transfer" ? "De" : "Conta"}>
-          {#snippet control(field)}
-            <NativeSelect {...field} bind:value={accountId} required>
-            <option value="" disabled>Selecione</option>
-            {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
-          </NativeSelect>
-          {/snippet}
-        </Field>
-        {#if kind === "transfer"}
-          <Field label="Para">
-            {#snippet control(field)}
-              <NativeSelect {...field} bind:value={toAccountId} required>
-              <option value="" disabled>Selecione</option>
-              {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
-            </NativeSelect>
-            {/snippet}
-          </Field>
-        {:else}
-          <Field label="Categoria">
-            {#snippet control(field)}
-              <NativeSelect {...field} bind:value={categoryId} required>
-              <option value="" disabled>Selecione</option>
-              {#each categoryOptions as category (category.id)}<option value={String(category.id)}>{category.label}</option>{/each}
-            </NativeSelect>
-            {/snippet}
-          </Field>
-        {/if}
-        <Field label="Valor (R$)">
-          {#snippet control(field)}
-            <Input {...field} bind:value={amount} inputmode="decimal" placeholder="0,00" required />
-          {/snippet}
-        </Field>
-        <Field label="Data">
-          {#snippet control(field)}
-            <Input {...field} type="date" bind:value={date} required />
-          {/snippet}
-        </Field>
-        <Field label="Descrição">
-          {#snippet control(field)}
-            <Input {...field} bind:value={description} placeholder="Opcional" />
-          {/snippet}
-        </Field>
-        <div class="flex items-center gap-4 md:col-span-3">
-          {#if kind !== "transfer"}
-            <Label class="font-normal"><input type="checkbox" bind:checked={pending} /> Ainda não aconteceu (pendente)</Label>
-          {/if}
-          <Button type="submit" class="ml-auto">Salvar</Button>
-        </div>
-      </form>
-      {#if error}<Alert variant="destructive" role="alert" class="mt-3">{error}</Alert>{/if}
-      {#if saved}<Alert variant="success" class="mt-3">Lançamento salvo.</Alert>{/if}
+  <PageHeader title="Lançamentos" description="Tudo o que entrou e saiu no mês.">
+    {#snippet actions()}
+      <Button onclick={openNew}><Plus aria-hidden="true" />Novo lançamento</Button>
+    {/snippet}
+  </PageHeader>
+
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="relative min-w-52 flex-1">
+      <Search class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <Input class="pl-9" placeholder="Buscar" aria-label="Buscar lançamentos" bind:value={search} oninput={() => (limit = PAGE_SIZE)} />
+    </div>
+    <NativeSelect class="w-44" aria-label="Filtrar por conta" bind:value={filterAccount} onchange={() => (limit = PAGE_SIZE)}>
+      <option value="">Todas as contas</option>
+      {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
+    </NativeSelect>
+    <NativeSelect class="w-52" aria-label="Filtrar por categoria" bind:value={filterCategory} onchange={() => (limit = PAGE_SIZE)}>
+      <option value="">Todas as categorias</option>
+      {#each data.categories as category (category.id)}<option value={String(category.id)}>{category.label}</option>{/each}
+    </NativeSelect>
+    {#if hasFilters}<IconButton icon={X} label="Limpar filtros" onclick={clearFilters} />{/if}
+  </div>
+
+  <Card>
+    <CardContent class="px-0">
+      {#if visible.length === 0 && hasFilters}
+        <EmptyState title="Nada encontrado." description="Nenhum lançamento combina com os filtros deste mês." />
+      {:else}
+        <TransactionList items={visible} onEdit={openEdit} onDelete={remove} emptyTitle="Nada lançado neste mês." />
+      {/if}
+      {#if data.hasMore}
+        <div class="flex justify-center px-5 pt-4"><Button variant="outline" onclick={() => (limit += PAGE_SIZE)}>Carregar mais</Button></div>
+      {/if}
     </CardContent>
   </Card>
 
-  <Card>
-    <CardHeader>
-      <CardTitle>Lançamentos</CardTitle>
-      <div class="flex flex-wrap gap-3 pt-2">
-        <Field label="Mês">
-          {#snippet control(field)}
-            <Input {...field} type="month" bind:value={filterMonth} class="w-44" />
-          {/snippet}
-        </Field>
-        <Field label="Conta">
-          {#snippet control(field)}
-            <NativeSelect {...field} bind:value={filterAccount} class="w-48">
-            <option value="">Todas</option>
-            {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
-          </NativeSelect>
-          {/snippet}
-        </Field>
-      </div>
-    </CardHeader>
-    <CardContent class="px-0"><TransactionTable items={data.items} onDelete={remove} /></CardContent>
-  </Card>
+  <Dialog bind:open={formOpen} title={editing ? "Editar lançamento" : "Novo lançamento"}>
+    {#key `${editing?.id ?? "new"}-${formOpen}`}
+      <TransactionForm
+        accounts={data.accounts}
+        categories={data.categories}
+        initial={formInitial}
+        editing={editing !== null}
+        onsubmit={save}
+        oncancel={() => (formOpen = false)}
+      />
+    {/key}
+  </Dialog>
 {/if}

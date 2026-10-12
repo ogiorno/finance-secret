@@ -141,7 +141,7 @@
               role="img"
               aria-label={`${Math.round(used)}% do crédito do mês já foi usado`}
             >
-              <div class="h-full rounded-full bg-benefit transition-[width] duration-1000 ease-out" style={`width: ${barsReady ? used : 0}%`}></div>
+              <div class="h-full rounded-full bg-benefit" style={`width: ${barsReady ? used : 0}%; transition: width 1s cubic-bezier(0.2, 0.8, 0.2, 1)`}></div>
             </div>
             <div class="flex justify-between text-xs text-muted-foreground">
               <span>Usado <Money cents={row.usedCents} /></span>
@@ -169,8 +169,8 @@
                   </div>
                   <div class="h-1.5 overflow-hidden rounded-full bg-muted">
                     <div
-                      class={`h-full rounded-full transition-[width] duration-700 ease-out ${BAR_CLASS[toneForName(item.name)]}`}
-                      style={`width: ${barsReady && spendingTotal > 0 ? (item.totalCents / spendingTotal) * 100 : 0}%`}
+                      class={`h-full rounded-full ${BAR_CLASS[toneForName(item.name)]}`}
+                      style={`width: ${barsReady && spendingTotal > 0 ? (item.totalCents / spendingTotal) * 100 : 0}%; transition: width 0.7s cubic-bezier(0.2, 0.8, 0.2, 1)`}
                     ></div>
                   </div>
                 </li>
