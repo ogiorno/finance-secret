@@ -15,6 +15,7 @@
     "@finance/core": "*",
     "@finance/database": "*",
     "@finance/ui": "*",
+    "@lucide/svelte": "^1.55.0",
     "echarts": "^5.6.0",
     "sql.js": "^1.13.0"
   },
@@ -23,9 +24,9 @@
     "@sveltejs/kit": "^2.0.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.0",
     "@types/sql.js": "^1.4.0",
     "better-sqlite3": "^12.0.0",
-    "@types/better-sqlite3": "^7.6.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.0.0",
