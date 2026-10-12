@@ -2,6 +2,7 @@ export { cn } from "./cn";
 export { formatBRL } from "./money";
 export { applyTheme, getStoredTheme, initTheme, setTheme, type Theme } from "./theme";
 
+export { default as AppShell, type AppNavItem } from "./components/AppShell.svelte";
 export { default as Alert, alertVariants, type AlertVariant } from "./components/Alert.svelte";
 export { default as Badge, badgeVariants, type BadgeVariant } from "./components/Badge.svelte";
 export {
@@ -27,6 +28,7 @@ export { default as Label } from "./components/Label.svelte";
 export { default as Link } from "./components/Link.svelte";
 export { default as MonthStepper } from "./components/MonthStepper.svelte";
 export { default as Money } from "./components/Money.svelte";
+export { default as NavLink } from "./components/NavLink.svelte";
 export { default as NativeSelect } from "./components/NativeSelect.svelte";
 export { default as PageHeader } from "./components/PageHeader.svelte";
 export { default as Progress } from "./components/Progress.svelte";
