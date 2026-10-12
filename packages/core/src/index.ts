@@ -16,3 +16,11 @@ export {
 export { isPaymentMethod, PAYMENT_METHOD_LABELS, PAYMENT_METHODS, type PaymentMethod } from "./payment";
 export { validateTransaction, type CategoryType, type NewTransaction } from "./transaction";
 export { buildTransfer, type TransferInput, type TransferLeg } from "./transfer";
+export {
+  averageSpendCents,
+  buildProjection,
+  remainingMonthShare,
+  type Projection,
+  type ProjectionMonth,
+  type ProjectionMonthInput,
+} from "./projection";
