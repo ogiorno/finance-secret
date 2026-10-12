@@ -1,6 +1,8 @@
 <script lang="ts">
   import "../app.css";
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
+  import { browser } from "$app/environment";
   import { ArrowLeftRight, FileDown, LayoutDashboard, Wallet } from "@lucide/svelte";
   import { Alert, AppShell, Badge, Button, Toaster, getStoredTheme, setTheme, type AppNavItem } from "@finance/ui";
   import { session } from "$lib/session.svelte";
@@ -22,6 +24,9 @@
 
   let theme = $state<"light" | "dark">("light");
   $effect(() => {
+    if (browser && !session.isOpen && page.url.pathname !== "/") void goto(`/?next=${encodeURIComponent(page.url.pathname)}`);
+  });
+  $effect(() => {
     theme = (document.documentElement.getAttribute("data-theme") as "light" | "dark" | null) ?? getStoredTheme() ?? "light";
   });
 
@@ -39,7 +44,7 @@
 
 <AppShell brand="Finanças" items={links} pathname={page.url.pathname}>
   {#snippet sidebarTop()}
-    <Badge variant="secondary">Modo offline</Badge>
+    <div class="grid gap-1"><Badge variant="secondary">Modo offline</Badge>{#if session.isOpen}<span class="break-all text-xs text-muted-foreground">{session.fileName}</span>{/if}</div>
   {/snippet}
   {#snippet sidebarBottom()}
     <Button variant="ghost" size="sm" onclick={toggleTheme} aria-label="Alternar tema claro e escuro">

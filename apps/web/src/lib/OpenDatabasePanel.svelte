@@ -7,31 +7,31 @@
   let input: HTMLInputElement;
 
   async function pick(event: Event & { currentTarget: HTMLInputElement }) {
-    const file = event.currentTarget.files?.[0];
+    const inputElement = event.currentTarget;
+    const file = inputElement.files?.[0];
     if (!file) return;
     await session.openFile(file);
-    event.currentTarget.value = "";
+    inputElement.value = "";
     if (session.isOpen && !session.error) onOpened?.();
   }
 </script>
 
 <Card>
   <CardHeader>
-    <CardTitle>Abrir seus dados</CardTitle>
+    <CardTitle>Comece com seus dados</CardTitle>
     <CardDescription>
       Tudo acontece neste navegador: o arquivo não é enviado para nenhum servidor.
     </CardDescription>
   </CardHeader>
   <CardContent class="flex flex-col gap-3">
+    {#if session.busy}<Alert>Preparando seu banco de dados…</Alert>{/if}
     {#if session.error}
       <Alert variant="destructive" role="alert">{session.error}</Alert>
     {/if}
     <div class="flex flex-wrap gap-2">
-      <Button onclick={() => input.click()} disabled={session.busy}>Abrir arquivo .db</Button>
-      <Button variant="outline" onclick={() => session.createNew().then(() => onOpened?.())} disabled={session.busy}>
-        Criar banco vazio
-      </Button>
-      <Button variant="ghost" onclick={() => session.openDemo().then(() => onOpened?.())} disabled={session.busy}>
+      <Button onclick={() => session.createNew().then(() => { if (session.isOpen && !session.error) onOpened?.(); })} disabled={session.busy}>Criar banco vazio</Button>
+      <Button variant="outline" onclick={() => input.click()} disabled={session.busy}>Abrir arquivo .db</Button>
+      <Button variant="ghost" onclick={() => session.openDemo().then(() => { if (session.isOpen && !session.error) onOpened?.(); })} disabled={session.busy}>
         Ver demonstração
       </Button>
     </div>

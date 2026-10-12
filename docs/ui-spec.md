@@ -4,51 +4,24 @@ Complementa [design-system.md](design-system.md) (tokens e regras de estilo) com
 
 ## 1. Auditoria das telas atuais
 
-Estado em 2026-10-11: `+layout`, `/`, `/transactions`, `/accounts`, `/backup` e os componentes de `apps/web/src/lib`.
+Atualização em 2026-10-11 após a implementação das melhorias de UI/UX.
 
-### O que já está certo
+### Corrigido e verificado
 
-- Nenhuma cor, raio, sombra ou valor arbitrário literal nas telas: tudo vem de token.
-- As telas compõem `@finance/ui` (`Card`, `Table`, `Kpi`, `Money`, `Alert`, `Button`, `Input`, `NativeSelect`, `Label`).
-- Acessibilidade de base: `aria-current` na navegação, foco visível, `Money` com sinal, gráfico com tabela equivalente e `decal`, `sr-only` na coluna de ações.
-- Tema claro e escuro funcionando, inclusive no gráfico.
+- `AppShell`, `NavLink`, `PageHeader`, `Field`, `EmptyState`, `Link`, `Checkbox`, `Dialog`, `MonthStepper` e `SegmentedControl` já existem em `@finance/ui` e são usados nas jornadas atuais.
+- Lançamentos agora priorizam a lista, com criação e edição em `Dialog` responsivo. No celular, o formulário ocupa a tela e mantém ações visíveis; `Esc` devolve o foco ao gatilho.
+- A lista tem busca, filtros por mês/conta/categoria, contagem e carregamento progressivo. Não há corte silencioso em 200 itens.
+- Exclusão tem cinco segundos para desfazer. A linha permanece marcada como pendente; a exportação espera a conclusão ou o desfazer.
+- Contas podem ser renomeadas, arquivadas e reativadas. O diálogo de arquivamento explica que o saldo sai do total do painel.
+- A primeira abertura fica no painel e preserva a rota solicitada. O painel usa `MonthStepper` e avisa quando escolhe automaticamente um mês anterior.
+- `check:tokens` verifica `packages/ui/src` e `apps/web/src`; padrões de controles crus ainda são avisos, não erros.
 
-### Desvios do design system (devem virar componente em `packages/ui`)
+### Ainda aberto
 
-| # | Onde | Problema | Correção |
-|---|---|---|---|
-| D1 | `+layout.svelte` | Sidebar, links e barra inferior montados com `<a>` e uma classe de ~250 caracteres, copiada duas vezes | `NavLink` e `AppShell` (sidebar e barra inferior) |
-| D2 | `TransactionTable.svelte:50` | `<button>` cru para "Excluir", alvo de toque minúsculo | `Button variant="ghost" size="sm"` (ou menu de ações) |
-| D3 | `+page.svelte:49`, `transactions:96` | `<a class="font-medium text-primary underline">` repetido | `Button variant="link"` com `href` ou componente `Link` |
-| D4 | `transactions:148` | `<input type="checkbox">` cru | `Checkbox` |
-| D5 | `transactions:85` | `confirm()` do navegador | `ConfirmDialog` |
-| D6 | 4 páginas | `<h1 class="mb-6 text-2xl font-semibold">` repetido | `PageHeader` (título, descrição, ações) |
-| D7 | ~14 campos | `<div class="grid gap-1.5"><Label/><Input/></div>` repetido, sem dica nem erro por campo | `Field` (label, hint, erro, `aria-describedby`, `aria-invalid`) |
-| D8 | 3 lugares | `<p class="px-5 py-6 text-sm text-muted-foreground">` para estado vazio | `EmptyState` (ícone, texto, ação) |
-
-### Lacunas de enforcement
-
-- `check:tokens` só varre `packages/ui`. As telas em `apps/web/src` não são verificadas, então a regra 3 do design system não é garantida pelo CI. Ampliar o script para `apps/web/src` (cores, valores arbitrários) e, como aviso, `<button`, `<a class=` e `confirm(` nas rotas.
-- Não consegui rodar `npm run check:tokens -w @finance/ui` nesta sessão (Windows apontando para o caminho do WSL, Node 22 em vez do 24). Rodar no WSL antes de usar este resultado como verdade.
-
-### Problemas de UX
-
-| # | Problema | Efeito |
-|---|---|---|
-| U1 | Transações não podem ser **editadas**, só criadas e excluídas | Erro de digitação obriga apagar e refazer |
-| U2 | Formulário de lançamento fica sempre aberto no topo, 7 campos em 3 colunas | A lista (o que se consulta mais) desce para fora da tela |
-| U3 | Tipo (Despesa, Receita, Transferência) é um `select` | Escolha mais frequente escondida num dropdown |
-| U4 | Excluir pede `confirm()` e não dá como desfazer; o delete é definitivo | Perda de dado sem volta |
-| U5 | Sucesso ("Lançamento salvo") e erro ficam fixos no card, longe do campo | Mensagem não some e não indica qual campo falhou |
-| U6 | Mês é `<input type="month">`, mal suportado no Firefox e no Safari desktop | Seletor inconsistente |
-| U7 | Dashboard escolhe sozinho o mês do último lançamento, sem avisar | Usuário vê "outubro" sem saber por quê |
-| U8 | Lista limitada a 200 sem aviso; sem busca por texto nem filtro por categoria | Itens somem em silêncio |
-| U9 | Tabela de 5 colunas no celular | Rolagem horizontal; a barra inferior com "Importar e exportar" também aperta |
-| U10 | Alvos de toque de 32 px (`size="sm"`, link "Excluir") | Abaixo dos 44 px recomendados |
-| U11 | Contas sem editar, renomear ou arquivar (o glossário prevê **Archived**) | Conta criada errada fica para sempre |
-| U12 | Primeira abertura: três botões do mesmo peso e o texto "Abrir seus dados" repetido em cada página | Não fica claro qual é o primeiro passo |
-| U13 | Valor monetário é texto livre, sem formatação ao sair do campo | Dúvida entre `1.250,00` e `1250` |
-| U14 | Sem estados de carregamento e erro de rede (hoje tudo é síncrono) | Quebra quando existirem Connected mode, Receipt e Assistant |
+- Quando houver Connected mode, Receipt e Assistant, definir estados de carregamento e erro para operações de rede.
+- Avaliar paginação por cursor no repositório se a base crescer muito. O carregamento atual aumenta o limite e refaz a consulta.
+- Verificar teclado virtual e áreas seguras em aparelhos físicos. O navegador automatizado confirmou foco, `Esc` e ausência de rolagem horizontal a 375/1280 px.
+- A tela inicial ainda usa o título geral Dashboard antes de abrir os dados. Uma identidade visual e texto de boas-vindas específicos podem ser explorados depois.
 
 ## 2. Princípios
 
@@ -65,7 +38,9 @@ Estado em 2026-10-11: `+layout`, `/`, `/transactions`, `/accounts`, `/backup` e 
 
 - **Formulários**: cada campo em `Field`. Validação ao sair do campo e ao enviar; o erro aparece sob o campo e o foco vai ao primeiro inválido. Botão principal à direita, secundário à esquerda; erro do servidor (que não é de campo) em `Alert` no topo do Dialog.
 - **Lançamento rápido**: botão "Novo lançamento" (e atalho `n`) abre Dialog; no celular, botão flutuante abre Sheet. Tipo em `SegmentedControl`. Ordem: valor (com foco), tipo, conta, categoria, data, descrição. Lembra a última conta e a data. Ações: "Salvar" e "Salvar e adicionar outro".
-- **Valor**: `inputmode="decimal"`, aceita `1250`, `1.250,00` e `1250,5`; ao sair do campo formata como `1.250,50`.
+- **Valor**: `inputmode="decimal"`, aceita `1250`, `1.250,00` e `1250,5`; ao sair do campo formata como `1.250,50`. Enquanto o lançamento é editado, uma prévia mostra valor, tipo, conta e categoria sem alterar os dados até Salvar. Não projetar saldo a partir de lançamento histórico.
+- **Gráficos do painel**: barras pareadas mostram receitas e despesas nos seis meses até o mês selecionado, com tabela equivalente de valores. A rosca mostra composição das despesas do mês; sua tabela inclui participação percentual calculada. Gráficos não dependem só de cor, têm descrição em PT-BR e dados acessíveis em tabela; sem dados, mostram estado vazio. Transferências não entram nos totais.
+- **Porcentagens vinculadas (conceito futuro)**: usar um divisor de duas partes A+B=100% somente quando houver regra de negócio para uma alocação proporcional. Arrastar deve atualizar ambos os lados e seus valores em reais, mas campos numéricos e teclado permanecem alternativas precisas; Salvar confirma, Cancelar descarta. Ver `docs/research-interacoes-valores.md`. Não aplicar aos percentuais derivados da rosca.
 - **Mês**: `MonthStepper` (`‹ Outubro 2026 ›`) e botão "Hoje". O dashboard avisa quando abre num mês diferente do atual.
 - **Tabelas**: no celular cada linha vira um item de lista (data e descrição à esquerda, valor à direita, conta e categoria em segunda linha). Ações da linha em menu `⋯`. Filtros ativos aparecem como chips removíveis. Lista passa dos 200: paginação "Carregar mais", sem corte silencioso.
 - **Feedback**: sucesso em Toast (4 s, `role="status"`); erro de ação em Toast persistente com "Tentar de novo"; erro de campo sob o campo.
@@ -76,25 +51,11 @@ Estado em 2026-10-11: `+layout`, `/`, `/transactions`, `/accounts`, `/backup` e 
 
 ## 4. Componentes
 
-### Existem
-`Alert`, `Badge`, `Button`, `Card` (+ partes), `Input`, `Kpi`, `Label`, `Money`, `NativeSelect`, `Progress`, `Separator`, `Skeleton`, `Table` (+ partes), `Textarea`.
+A fundação atual de `@finance/ui` inclui `AppShell`, `NavLink`, `PageHeader`, `Field`, `EmptyState`, `Checkbox`, `Link`, `Dialog`, `ConfirmDialog`, `Toaster`, `SegmentedControl`, `MonthStepper`, os componentes de cartão/tabela/formulário e os componentes financeiros `Money` e `Kpi`. Ícones de `@lucide/svelte` já são usados.
 
-### A criar (ordem de prioridade)
+Para as telas futuras da seção 5, ainda podem ser necessários `Stepper`, `FileDrop`, `Spinner`, `Tabs`, `Tooltip`, `DropdownMenu`, `ProposalCard`, `Combobox`, `Popover` e `DatePicker`. Criar em `packages/ui` quando a jornada correspondente for implementada; `ProposalCard` fica no app.
 
-**P0, antes de qualquer tela nova** (corrige D1 a D8):
-`PageHeader`, `Field`, `EmptyState`, `Checkbox`, `Link` (ou `Button variant="link"` com `href`), `NavLink`/`AppShell`, `ConfirmDialog` e `Dialog`, `Toast`, `SegmentedControl`, `MonthStepper`, `ResponsiveRow` (item de lista no celular).
-
-**P1, para a Fase 3.5** (cupom e Assistant):
-`Sheet`, `Stepper`, `FileDrop` (arrastar, escolher ou tirar foto), `Spinner`, `Tabs`, `Tooltip`, `DropdownMenu`, `ProposalCard` (compõe `Card`, `Badge` e `Button`; fica no app, não no pacote).
-
-**P2**:
-`Combobox` para categoria (lista longa com busca), `Popover`, `DatePicker`.
-
-Dialog, Sheet, Tabs, Tooltip, DropdownMenu e Combobox usam `bits-ui` (já previsto no design system) para o teclado e o ARIA.
-
-### Ícones e densidade
-- Proposta: `@lucide/svelte` (licença ISC) para ícones de navegação, ações e estados. Decisão aberta, ver seção 7.
-- Tokens a acrescentar em `theme.css`: altura de controle (`--control-h`: 2.25rem; `2.75rem` em `pointer: coarse`) e escala de texto semântica (título de página, título de seção, corpo, legenda). Os componentes passam a ler esses tokens.
+Os controles leem os tokens de `theme.css`, inclusive altura de toque de 44 px em `pointer: coarse`.
 
 ## 5. Telas novas
 
@@ -120,21 +81,19 @@ Lista de bancos (nome, tamanho, última alteração, selo "Ativo"). Ações por 
 ### Configurações
 Tema; provedor de IA (URL base, chave mascarada com "Trocar", modelo, botão **Testar conexão** que mostra o resultado); limite de importação. A chave nunca é exibida de volta.
 
-## 6. Ordem de implementação sugerida
+## 6. Próximos passos
 
-1. **Fundação de UI**: P0 de componentes, tokens de controle e texto, ampliar `check:tokens`. Migrar as 4 telas atuais (corrige D1 a D8).
-2. **Lançamentos**: editar (U1), lançamento rápido, desfazer, filtros e celular (U2 a U10).
-3. **Contas e primeira abertura**: editar e arquivar (U11), boas-vindas (U12).
-4. **P1 de componentes**, depois Cupom, Assistant, Contas fixas, Bancos e Configurações, na ordem das fases 3.5 em diante.
+1. Validar o formulário com teclado virtual e área segura em aparelhos físicos.
+2. Se o volume de transações exigir, substituir o carregamento por limite crescente por paginação com cursor no repositório.
+3. Ao implementar o Connected mode, acrescentar estados de carregamento, erro e recuperação para operações de rede.
+4. Criar os componentes futuros apenas com as telas correspondentes da seção 5.
 
-Cada passo vira ticket pequeno e vertical (`/to-tickets`).
+## 7. Decisões tomadas
 
-## 7. Decisões abertas
-
-- **Ícones**: adotar `@lucide/svelte`? Recomendação: sim.
-- **Marca**: manter o primário verde-água atual ou trocar a identidade (basta editar `theme.css`)? Recomendação: manter até o P0 estar pronto e só então avaliar.
-- **Exclusão com desfazer**: aceitar o atraso de ~5 s na gravação para permitir Desfazer? Recomendação: sim.
-- **Atalhos de teclado** (`n`, `?`): entram já no P0 ou depois? Recomendação: depois.
+- **Ícones**: `@lucide/svelte` adotado.
+- **Marca**: identidade verde-água mantida no tema.
+- **Exclusão**: gravação adiada por cinco segundos, com `Desfazer`; a exportação aguarda o resultado.
+- **Atalhos de teclado** (`n`, `?`): ficam para uma etapa futura. A navegação básica e o diálogo já funcionam por teclado.
 
 ## 8. Definição de pronto para uma tela
 

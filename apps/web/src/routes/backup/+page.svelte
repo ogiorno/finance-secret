@@ -22,6 +22,9 @@
       {#if session.dirty}
         <Alert variant="warning">Há alterações ainda não exportadas.</Alert>
       {/if}
+      {#if session.pendingDeleteId !== null}
+        <Alert variant="warning">A exportação aguardará o fim do prazo para desfazer a exclusão.</Alert>
+      {/if}
       <div>
         <Button onclick={() => session.exportFile()} disabled={!session.isOpen}>Baixar {session.fileName}</Button>
       </div>

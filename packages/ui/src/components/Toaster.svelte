@@ -24,9 +24,11 @@
       {#if item.action}
         <Button size="sm" variant="outline" onclick={() => toast.act(item.id)}>{item.action.label}</Button>
       {/if}
-      <Button size="icon" variant="ghost" aria-label="Fechar aviso" onclick={() => toast.close(item.id)}>
-        <X aria-hidden="true" />
-      </Button>
+      {#if !item.action}
+        <Button size="icon" variant="ghost" aria-label="Fechar aviso" onclick={() => toast.close(item.id)}>
+          <X aria-hidden="true" />
+        </Button>
+      {/if}
     </div>
   {/each}
 </div>

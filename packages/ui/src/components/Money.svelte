@@ -22,7 +22,7 @@
 
   const resolved = $derived(tone === "auto" ? (cents > 0 ? "income" : cents < 0 ? "expense" : "neutral") : tone);
   const negative = $derived(resolved === "expense" || (tone !== "income" && cents < 0));
-  const sign = $derived(showSign || resolved !== "neutral" ? (negative ? "−" : cents === 0 ? "" : "+") : "");
+  const sign = $derived(cents === 0 ? "" : (showSign || resolved !== "neutral" ? (negative ? "−" : "+") : ""));
 </script>
 
 <span
