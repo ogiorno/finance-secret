@@ -42,6 +42,10 @@ _Avoid_: Inactive, deleted, closed
 The sum of all Account balances (credit cards and loans included, as negatives) plus the current value of all Assets.
 _Avoid_: Equity, patrimony
 
+**Account type**:
+A kind of Account that the user can edit: checking, credit card, meal voucher, or any custom one. It says whether its Accounts start in debt and whether the dashboard shows how much was credited to and used from them in the month. Built-in types can be archived but never deleted.
+_Avoid_: Category (that classifies Transactions), asset class
+
 **Receipt**:
 A supermarket purchase proof, read from the QR Code printed on it. It becomes one expense Transaction for the total, plus the list of items bought and where. Only available in Connected mode. Importing the same Receipt twice is refused.
 _Avoid_: Invoice, note, cupom
