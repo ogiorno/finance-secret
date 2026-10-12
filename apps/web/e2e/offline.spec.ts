@@ -22,7 +22,7 @@ test("demo database: dashboard renders with no external requests and no CSP viol
 
   await expect(page.getByText("Saldo total")).toBeVisible();
   await expect(page.getByText("Despesas por categoria")).toBeVisible();
-  await expect(page.getByRole("row", { name: /Moradia/ }).first()).toBeVisible();
+  await expect(page.getByText("Moradia").first()).toBeVisible();
 
   expect(net.external).toEqual([]);
   expect(net.problems).toEqual([]);
@@ -39,7 +39,7 @@ test("create, edit, export and reopen keeps the data", async ({ page }) => {
   await page.getByRole("button", { name: "Criar conta" }).click();
   await expect(page.getByRole("cell", { name: "Conta de teste" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Transações" }).click();
+  await page.getByRole("link", { name: "Lançamentos" }).click();
   await page.getByLabel("Conta", { exact: true }).first().selectOption({ label: "Conta de teste" });
   await page.getByLabel("Categoria").selectOption({ label: "Mercado" });
   await page.getByLabel("Valor (R$)").fill("80,50");
@@ -71,6 +71,6 @@ test("an invalid file shows a friendly error and keeps the open database", async
   await page.getByTestId("file-input").setInputFiles({ name: "lixo.db", mimeType: "application/octet-stream", buffer: Buffer.from("isto não é sqlite") });
   await expect(page.getByRole("alert")).toContainText("não é um banco SQLite");
 
-  await page.getByRole("link", { name: "Dashboard" }).first().click();
+  await page.getByRole("link", { name: "Painel" }).first().click();
   await expect(page.getByText("Saldo total")).toBeVisible();
 });

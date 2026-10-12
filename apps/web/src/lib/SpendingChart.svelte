@@ -3,9 +3,9 @@
   import { AriaComponent, TooltipComponent } from "echarts/components";
   import * as echarts from "echarts/core";
   import { CanvasRenderer } from "echarts/renderers";
-  import { formatBRL } from "@finance/ui";
+  import { formatBRL, toneForName } from "@finance/ui";
   import { onMount } from "svelte";
-  import { CHART_TOKENS, tokenColor } from "./chart-colors";
+  import { tokenColor } from "./chart-colors";
 
   echarts.use([PieChart, TooltipComponent, AriaComponent, CanvasRenderer]);
 
@@ -19,7 +19,7 @@
     const foreground = tokenColor("--foreground");
     chart.setOption(
       {
-        color: CHART_TOKENS.map(tokenColor),
+        color: data.map((item) => tokenColor(`--${toneForName(item.name)}`)),
         // Padrões (decal) além da cor: o gráfico não depende só de cor para ser lido.
         aria: { enabled: true, decal: { show: true } },
         tooltip: { trigger: "item", formatter: (p: { name: string; value: number }) => `${p.name}: ${formatBRL(p.value)}` },
