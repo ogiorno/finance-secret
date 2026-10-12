@@ -89,7 +89,8 @@
       summary,
       incomeTrend: change(summary.incomeCents, previous.incomeCents),
       expenseTrend: change(summary.expenseCents, previous.expenseCents),
-      balance: repo.getTotalBalance(),
+      balance: repo.getBalanceBreakdown().cashCents,
+      breakdown: repo.getBalanceBreakdown(),
       roll: repo.getMonthRollForward(month),
       extras: repo.getMonthExtras(month),
       toReceive: repo.getIncomeExpectations(month, todayLocal()).remainingCents,
@@ -138,8 +139,15 @@
         label="Saldo total"
         icon={Wallet}
         tone="primary"
-        info="Soma do saldo das suas contas ativas. Cartões e empréstimos entram como dívida (negativo). Não inclui bens nem lançamentos pendentes."
-      ><CountUp cents={view.balance} tone="auto" /></Kpi>
+        info="Dinheiro que você tem hoje nas suas contas ativas. Cartões e empréstimos não são descontados: o que você deve neles aparece embaixo, para pagar quando a fatura vencer. Não inclui bens nem lançamentos pendentes."
+      >
+        <CountUp cents={view.balance} tone="auto" />
+        {#snippet hint()}
+          {#if view.breakdown.debtCents !== 0}
+            A pagar nos cartões <Money cents={view.breakdown.debtCents} tone="expense" /> (fora deste saldo)
+          {/if}
+        {/snippet}
+      </Kpi>
     </div>
     <div class="animate-rise" style="animation-delay: 60ms">
       <Kpi
@@ -166,7 +174,7 @@
         label="Despesas do mês"
         icon={ArrowDownRight}
         tone="expense"
-        info="Dinheiro que saiu no mês escolhido, no dia em que foi pago. Contas ainda não pagas, transferências e lançamentos pendentes não contam."
+        info="Dinheiro que saiu no mês escolhido, no dia em que foi pago. Compras no cartão contam no mês em que a fatura fecha (a que você vai pagar). Contas ainda não pagas, transferências e lançamentos pendentes não contam."
       >
         <CountUp cents={view.summary.expenseCents} tone="expense" />
         {#snippet trend()}{#if view.expenseTrend !== null}<TrendBadge percent={view.expenseTrend} goodWhen="down" />{/if}{/snippet}

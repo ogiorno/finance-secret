@@ -42,10 +42,9 @@ describe.each(drivers)("Money flow of a month ($name)", ({ create }) => {
     repo.addTransaction({ accountId: card.id, categoryId: food.id, type: "expense", amountCents: 1000, date: "2026-03-11" });
     repo.addTransaction({ accountId: checking.id, categoryId: health.id, type: "expense", amountCents: 17500, date: "2026-03-12" });
 
-    const { edges } = repo.getMoneyFlow("2026-03");
-
-    expect(edge(edges, "expense", "Cartão", "Alimentação")?.cents).toBe(53200);
-    expect(edge(edges, "expense", "Conta corrente", "Saúde")?.cents).toBe(17500);
+    // A fatura do cartão fecha em 1º de abril: as compras de março entram no fluxo de abril.
+    expect(edge(repo.getMoneyFlow("2026-04").edges, "expense", "Cartão", "Alimentação")?.cents).toBe(53200);
+    expect(edge(repo.getMoneyFlow("2026-03").edges, "expense", "Conta corrente", "Saúde")?.cents).toBe(17500);
   });
 
   it("sends extra expenses to Despesas extras and bills paid to Contas a pagar", () => {
@@ -113,8 +112,32 @@ describe.each(drivers)("Money flow of a month ($name)", ({ create }) => {
     expect(flow.edges).toEqual([]);
   });
 
+  it("says how much went into each goal in the month, split into put in and taken out", () => {
+    const trip = repo.createGoal({ name: "Viagem" });
+    const reserve = repo.createGoal({ name: "Reserva" });
+    repo.addContribution(trip.id, { amountCents: 50000, date: "2026-03-05" });
+    repo.addContribution(trip.id, { amountCents: -10000, date: "2026-03-20" });
+    repo.addContribution(trip.id, { amountCents: 99999, date: "2026-04-05" });
+    repo.addContribution(reserve.id, { amountCents: 20000, date: "2026-03-28" });
+
+    expect(repo.getMoneyFlow("2026-03").goals).toEqual([
+      { goalId: trip.id, goalName: "Viagem", contributedCents: 50000, withdrawnCents: 10000, netCents: 40000 },
+      { goalId: reserve.id, goalName: "Reserva", contributedCents: 20000, withdrawnCents: 0, netCents: 20000 },
+    ]);
+  });
+
+  it("leaves out goals without activity in the month and goals that are not active", () => {
+    const quiet = repo.createGoal({ name: "Parada" });
+    const done = repo.createGoal({ name: "Executada" });
+    repo.addContribution(quiet.id, { amountCents: 1000, date: "2026-02-05" });
+    repo.addContribution(done.id, { amountCents: 1000, date: "2026-03-05" });
+    repo.setGoalStatus(done.id, "executed");
+
+    expect(repo.getMoneyFlow("2026-03").goals).toEqual([]);
+  });
+
   it("returns an empty flow for a month without activity and rejects a malformed month", () => {
-    expect(repo.getMoneyFlow("2026-03")).toEqual({ month: "2026-03", edges: [], goalsNetCents: 0 });
+    expect(repo.getMoneyFlow("2026-03")).toEqual({ month: "2026-03", edges: [], goalsNetCents: 0, goals: [] });
     expect(() => repo.getMoneyFlow("2026-13")).toThrow(/mês inválido/i);
   });
 
@@ -123,7 +146,8 @@ describe.each(drivers)("Money flow of a month ($name)", ({ create }) => {
     const first = repo.addTransaction({ accountId: card.id, categoryId: market.id, type: "expense", amountCents: 100, date: "2026-03-10" });
     const second = repo.addTransaction({ accountId: card.id, categoryId: market.id, type: "expense", amountCents: 200, date: "2026-03-11" });
 
-    const found = edge(repo.getMoneyFlow("2026-03").edges, "expense", "Cartão", "Alimentação") ?? edge(repo.getMoneyFlow("2026-03").edges, "expense", "Cartão", "Mercado");
+    const edges = repo.getMoneyFlow("2026-04").edges;
+    const found = edge(edges, "expense", "Cartão", "Alimentação") ?? edge(edges, "expense", "Cartão", "Mercado");
 
     expect([...(found?.transactionIds ?? [])].sort()).toEqual([first.id, second.id].sort());
   });

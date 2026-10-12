@@ -252,6 +252,18 @@ CREATE TABLE goal_contributions (
 CREATE INDEX idx_goal_contributions_goal ON goal_contributions (goal_id, contribution_date);
 `;
 
+/**
+ * Migration 009: dia em que a fatura do cartão vira. Tipos de conta que têm fatura (o cartão de crédito de fábrica e os
+ * personalizados que o usuário marcar) guardam o dia de fechamento em cada conta; novos e antigos começam no dia 1.
+ */
+const m009 = `
+ALTER TABLE account_types ADD COLUMN has_closing_day INTEGER NOT NULL DEFAULT 0 CHECK (has_closing_day IN (0, 1));
+UPDATE account_types SET has_closing_day = 1 WHERE key = 'credit_card';
+
+ALTER TABLE accounts ADD COLUMN closing_day INTEGER CHECK (closing_day IS NULL OR closing_day BETWEEN 1 AND 31);
+UPDATE accounts SET closing_day = 1 WHERE type IN (SELECT key FROM account_types WHERE has_closing_day = 1);
+`;
+
 export const migrations: Migration[] = [
   { version: 1, sql: m001 },
   { version: 2, sql: m002, rebuildsTables: true },
@@ -261,6 +273,7 @@ export const migrations: Migration[] = [
   { version: 6, sql: m006 },
   { version: 7, sql: m007 },
   { version: 8, sql: m008 },
+  { version: 9, sql: m009 },
 ];
 
 export const CURRENT_SCHEMA_VERSION = migrations[migrations.length - 1]?.version ?? 0;

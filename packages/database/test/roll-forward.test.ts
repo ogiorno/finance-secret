@@ -55,6 +55,7 @@ describe.each(drivers)("Balance by date and month roll-forward ($name)", ({ crea
         incomeCents: 500000,
         expenseCents: 120000,
         closingCents: 560000,
+        cardsCents: 0,
         unexplainedCents: 0,
       });
     });
@@ -67,6 +68,7 @@ describe.each(drivers)("Balance by date and month roll-forward ($name)", ({ crea
         incomeCents: 0,
         expenseCents: 0,
         closingCents: 100000,
+        cardsCents: 0,
         unexplainedCents: 0,
       });
     });
@@ -92,6 +94,34 @@ describe.each(drivers)("Balance by date and month roll-forward ($name)", ({ crea
 
       expect(roll.unexplainedCents).toBe(-90000);
       expect(roll.openingCents + roll.incomeCents - roll.expenseCents + roll.unexplainedCents).toBe(roll.closingCents);
+    });
+
+    it("counts a card purchase in the month its invoice closes, and the invoice payment against it", () => {
+      const { checking, spend } = setup();
+      const card = repo.createAccount({ name: "Cartão", type: "credit_card" });
+      const feira = repo.createCategory({ name: "Feira", type: "expense" });
+      spend(20000, "2026-03-10");
+      repo.addTransaction({ accountId: card.id, categoryId: feira.id, type: "expense", amountCents: 57597, date: "2026-03-12" });
+
+      expect(repo.getMonthRollForward("2026-03")).toEqual({
+        openingCents: 100000,
+        incomeCents: 0,
+        expenseCents: 20000,
+        closingCents: 80000,
+        cardsCents: 0,
+        unexplainedCents: 0,
+      });
+
+      repo.addTransfer({ fromAccountId: checking.id, toAccountId: card.id, amountCents: 57597, date: "2026-04-08" });
+
+      expect(repo.getMonthRollForward("2026-04")).toEqual({
+        openingCents: 80000,
+        incomeCents: 0,
+        expenseCents: 57597,
+        closingCents: 22403,
+        cardsCents: 0,
+        unexplainedCents: 0,
+      });
     });
 
     it("rejects a malformed month", () => {

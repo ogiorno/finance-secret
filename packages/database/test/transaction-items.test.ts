@@ -41,7 +41,8 @@ describe.each(drivers)("Transaction items ($name)", ({ create }) => {
     expect(repo.getItemsTotal(purchase.id)).toEqual({ itemsCents: 5198, transactionCents: 52200, differenceCents: 47002 });
     // A conta e os totais seguem pelo valor da compra, nunca pela soma dos itens.
     expect(repo.getBalance(account.id)).toBe(-52200);
-    expect(repo.getMonthSummary("2026-03").expenseCents).toBe(52200);
+    // Compra no cartão conta no mês em que a fatura fecha (abril, com a virada no dia 1).
+    expect(repo.getMonthSummary("2026-04").expenseCents).toBe(52200);
   });
 
   it("can have items worth more than the purchase (a discount was applied)", () => {

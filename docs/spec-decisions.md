@@ -14,7 +14,7 @@ Resultado da sessão de grilling. Onde este arquivo e o spec original divergirem
 - `transaction_date`: texto `YYYY-MM-DD`, data local, sem hora. `created_at`/`updated_at`: UTC ISO 8601.
 - Transfer: duas pernas com sinal (ADR 0002). Categoria nula nas pernas.
 - `status`: `pending` | `posted`; só `posted` conta em saldos e totais.
-- Cartão e empréstimo são `accounts` de tipo próprio com saldo negativo permitido; pagar a fatura é uma transferência. Sem modelo de fatura, limite ou parcelas.
+- Cartão e empréstimo são `accounts` de tipo próprio com saldo negativo permitido; pagar a fatura é uma transferência. Sem limite ou parcelas. **Atualizado (2026-10-12):** o cartão tem um dia de virada da fatura (`accounts.closing_day`, padrão 1, editável nas configurações da conta); a fatura em aberto e a anterior são calculadas dos gastos do cartão por ciclo (`getCardInvoice`), sem tabela de faturas. O painel separa o dinheiro nas contas da dívida nos cartões (`getBalanceBreakdown`).
 - Categorias: no máximo 2 níveis; gráficos agrupam pela categoria-pai; `type` da transação igual ao da categoria. Banco novo vem com categorias padrão em PT-BR.
 - Exclusão: transações são apagadas de verdade (apagar uma perna apaga o Transfer). Conta ou categoria com histórico só é arquivada (`is_active = 0`).
 - Fase 5: `assets.quantity_e8` inteiro (10⁻⁸); orçamento por categoria e mês `YYYY-MM`, cópia manual do mês anterior, sem rollover, categoria-pai inclui filhas; metas (atualizado pela spec `goals`): caixinhas que **reservam** dinheiro sem movê-lo, com aportes e resgates datados (`goal_contributions`) que não são Transactions; `layout_json` com enum fixa de widgets, props validadas por Zod versionado e widgets inválidos descartados.

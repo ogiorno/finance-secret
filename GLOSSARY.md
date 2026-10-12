@@ -70,6 +70,10 @@ _Avoid_: Payment type, origin
 An expense the user marks as an unplanned expense of the month. It keeps its own Category and still counts as a normal expense; the dashboard just also totals the Extras.
 _Avoid_: Unexpected, emergency
 
+**Closing day**:
+The day of the month when a credit card's invoice turns: a purchase made on that day or after goes into the new invoice. With closing day 1 the invoice is the calendar month, which is the default. Only Account types that have an invoice (the built-in credit card, or a custom type marked so) have one. The invoice is a view over the card Account: the money owed there is a debt, separate from the money in the user's other Accounts, and paying the invoice is a Transfer. A card purchase counts in the month its invoice closes (the turn date's month; with closing day 1, an October purchase belongs to November), in the month totals, categories, extras and money flow, while the transaction list still shows it on the day it was made. The dashboard's total balance is only the money in non-debt Accounts: card purchases count as expenses on the day they are made, but the money only leaves the balance when the invoice is paid, so the unpaid invoice is shown beside the balance, not subtracted from it.
+_Avoid_: Due day, statement date
+
 **Goal**:
 A named jar of money the user is saving towards (a trip, an emergency fund), with an optional target and deadline. A Goal is not an Account: the money stays where it is, the Goal only reserves part of it. It is Active, Executed (the money was spent on the objective, which releases the reservation) or Archived.
 _Avoid_: Savings account, envelope, budget

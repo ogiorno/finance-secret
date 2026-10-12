@@ -4,11 +4,14 @@ import {
   dueDateFor,
   expectedAmountFor,
   averageMonthlyCents,
+  currentCycle,
+  daysUntil,
   estimateCompletionPeriod,
   isPaymentMethod,
   isValidDate,
   itemTotalCents,
   monthlyContributionNeeded,
+  previousCycle,
   progressPercent,
   validateTransaction,
   type BillAmountStep,
@@ -33,6 +36,8 @@ export interface Account {
   openingBalanceCents: number;
   /** Falso quando a conta foi arquivada (Archived): fica fora de novos lançamentos e do saldo total. */
   isActive: boolean;
+  /** Dia do mês em que a fatura vira; só em contas de tipo com fatura (cartão), senão nulo. */
+  closingDay: number | null;
 }
 
 export interface AccountTypeRecord {
@@ -42,6 +47,8 @@ export interface AccountTypeRecord {
   isLiability: boolean;
   /** Mostra no painel quanto entrou e quanto saiu (vale-alimentação). */
   tracksUsage: boolean;
+  /** Contas deste tipo têm fatura, que vira em um dia do mês (cartão de crédito). */
+  hasClosingDay: boolean;
   /** Tipos de fábrica não podem ser apagados. */
   isSystem: boolean;
   isActive: boolean;
@@ -53,6 +60,7 @@ export interface NewAccountType {
   name: string;
   isLiability?: boolean;
   tracksUsage?: boolean;
+  hasClosingDay?: boolean;
   defaultPaymentMethod?: PaymentMethod | null;
 }
 
@@ -95,6 +103,8 @@ export interface NewAccount {
   name: string;
   type: AccountType;
   openingBalanceCents?: number;
+  /** Dia em que a fatura vira; só para tipos com fatura. Sem valor, dia 1. */
+  closingDay?: number;
 }
 
 export interface NewCategory {
@@ -150,12 +160,17 @@ export interface MonthSummary {
 }
 
 export interface MonthRollForward {
-  /** Saldo total das contas ativas no fim do mês anterior. */
+  /** Dinheiro nas contas ativas (sem cartões e empréstimos) no fim do mês anterior. */
   openingCents: number;
   incomeCents: number;
   expenseCents: number;
-  /** Saldo total das contas ativas no fim do mês. */
+  /** Dinheiro nas contas ativas (sem cartões e empréstimos) no fim do mês. */
   closingCents: number;
+  /**
+   * Efeito dos cartões e empréstimos no dinheiro do mês: compras do cartão que entram nas despesas deste mês
+   * (as de uma fatura que fecha agora) menos o que foi pago de fatura no mês. Quem paga a fatura vê negativo.
+   */
+  cardsCents: number;
   /** Quanto do movimento do saldo as receitas e despesas não explicam (ex.: transferência com conta arquivada). */
   unexplainedCents: number;
 }
@@ -510,12 +525,60 @@ export interface MoneyFlowEdge {
   transactionIds: number[];
 }
 
+export interface GoalFlow {
+  goalId: number;
+  goalName: string;
+  /** O que foi colocado na meta no mês. */
+  contributedCents: number;
+  /** O que foi retirado da meta no mês. */
+  withdrawnCents: number;
+  netCents: number;
+}
+
 export interface MoneyFlow {
   month: string;
   edges: MoneyFlowEdge[];
   /** Aportes menos resgates das metas no mês: reserva, não gasto, e sem conta de origem. */
   goalsNetCents: number;
+  /** Quanto foi para cada meta ativa que teve movimento no mês. */
+  goals: GoalFlow[];
 }
+
+export interface CardInvoice {
+  /** O dia do mês em que a fatura vira. */
+  closingDay: number;
+  /** Início da fatura em aberto (o último dia de virada, inclusive). */
+  cycleStart: string;
+  /** Dia em que a fatura em aberto fecha e a nova começa. */
+  nextTurn: string;
+  daysUntilTurn: number;
+  /** Gastos `posted` no cartão desde que a fatura em aberto começou. */
+  openInvoiceCents: number;
+  /** Gastos `posted` da fatura que fechou antes dessa. */
+  previousInvoiceCents: number;
+  /** O que ainda se deve no cartão, contando tudo (compras de todas as faturas menos o que já foi pago). */
+  owedCents: number;
+}
+
+export interface BalanceBreakdown {
+  /** Soma das contas ativas que não são dívida: o dinheiro que você tem. */
+  cashCents: number;
+  /** Soma das contas ativas que são dívida (cartões, empréstimos): zero ou negativa. */
+  debtCents: number;
+}
+
+/**
+ * Mês em que um lançamento conta nos totais. Compra no cartão conta no mês em que a fatura dela fecha
+ * (a "virada"), que é quando ela passa a ser paga: com virada no dia 1, a compra de outubro é de novembro.
+ * Usa as colunas `t` (lançamento) e `a` (conta); o resto conta pela própria data.
+ */
+const COMPETENCE_MONTH = `CASE
+  WHEN a.closing_day IS NULL THEN substr(t.transaction_date, 1, 7)
+  WHEN CAST(substr(t.transaction_date, 9, 2) AS INTEGER)
+       < MIN(a.closing_day, CAST(strftime('%d', date(t.transaction_date, 'start of month', '+1 month', '-1 day')) AS INTEGER))
+    THEN substr(t.transaction_date, 1, 7)
+  ELSE substr(date(t.transaction_date, 'start of month', '+1 month'), 1, 7)
+END`;
 
 export const DEFAULT_CATEGORIES: { name: string; type: CategoryType; children?: string[] }[] = [
   { name: "Moradia", type: "expense", children: ["Aluguel", "Condomínio", "Contas de casa"] },
@@ -628,6 +691,12 @@ export interface FinanceRepository {
   getGoalsOverview(fromMonth: string, toMonth: string): GoalOverviewRow[];
   /** De onde o dinheiro veio, por onde passou e para onde foi no mês `YYYY-MM` (só contas ativas, só `posted`). */
   getMoneyFlow(month: string): MoneyFlow;
+  /** O dia da virada da fatura de um cartão (1 a 31). Só contas de tipo com fatura têm. */
+  setAccountClosingDay(id: number, day: number): void;
+  /** A fatura em aberto, a anterior e o que se deve no cartão; `today` é a data local `YYYY-MM-DD`. */
+  getCardInvoice(accountId: number, today: string): CardInvoice;
+  /** O saldo total separado em dinheiro nas contas e dívida nos cartões e empréstimos. */
+  getBalanceBreakdown(): BalanceBreakdown;
   createRecurringBill(input: NewRecurringBill): RecurringBill;
   /** Contas recorrentes ativas (e as arquivadas, se pedido), na ordem de criação. */
   listRecurringBills(options?: ListRecurringBillsOptions): RecurringBill[];
@@ -666,15 +735,23 @@ class SqlFinanceRepository implements FinanceRepository {
   constructor(private readonly db: Driver) {}
 
   createAccount(input: NewAccount): Account {
-    const accountType = this.db.all<{ is_active: number }>("SELECT is_active FROM account_types WHERE key = ?", [input.type])[0];
+    const accountType = this.db.all<{ is_active: number; has_closing_day: number }>(
+      "SELECT is_active, has_closing_day FROM account_types WHERE key = ?",
+      [input.type],
+    )[0];
     if (!accountType) throw new Error("Tipo de conta não encontrado.");
     if (accountType.is_active !== 1) throw new Error("Tipo de conta arquivado: escolha outro.");
+    if (input.closingDay !== undefined && accountType.has_closing_day !== 1) {
+      throw new Error("Só contas de cartão têm dia de virada da fatura.");
+    }
+    if (input.closingDay !== undefined) this.validateClosingDay(input.closingDay);
+    const closingDay = accountType.has_closing_day === 1 ? (input.closingDay ?? 1) : null;
     const openingBalanceCents = input.openingBalanceCents ?? 0;
     const { lastInsertRowid } = this.db.run(
-      "INSERT INTO accounts (name, type, opening_balance_cents, created_at) VALUES (?, ?, ?, ?)",
-      [input.name, input.type, openingBalanceCents, new Date().toISOString()],
+      "INSERT INTO accounts (name, type, opening_balance_cents, closing_day, created_at) VALUES (?, ?, ?, ?, ?)",
+      [input.name, input.type, openingBalanceCents, closingDay, new Date().toISOString()],
     );
-    return { id: lastInsertRowid, name: input.name, type: input.type, openingBalanceCents, isActive: true };
+    return { id: lastInsertRowid, name: input.name, type: input.type, openingBalanceCents, isActive: true, closingDay };
   }
 
   createCategory(input: NewCategory): Category {
@@ -809,8 +886,9 @@ class SqlFinanceRepository implements FinanceRepository {
         is_system: number;
         is_active: number;
         default_payment_method: PaymentMethod | null;
+        has_closing_day: number;
       }>(
-        `SELECT key, name, is_liability, tracks_usage, is_system, is_active, default_payment_method FROM account_types
+        `SELECT key, name, is_liability, tracks_usage, is_system, is_active, default_payment_method, has_closing_day FROM account_types
           ${options.includeArchived ? "" : "WHERE is_active = 1"} ORDER BY is_system DESC, rowid`,
       )
       .map((row) => ({
@@ -821,6 +899,7 @@ class SqlFinanceRepository implements FinanceRepository {
         isSystem: row.is_system === 1,
         isActive: row.is_active === 1,
         defaultPaymentMethod: row.default_payment_method,
+        hasClosingDay: row.has_closing_day === 1,
       }));
   }
 
@@ -840,8 +919,8 @@ class SqlFinanceRepository implements FinanceRepository {
     const defaultPaymentMethod = input.defaultPaymentMethod ?? null;
     if (defaultPaymentMethod !== null && !isPaymentMethod(defaultPaymentMethod)) throw new Error("Método de pagamento inválido.");
     this.db.run(
-      "INSERT INTO account_types (key, name, is_liability, tracks_usage, is_system, default_payment_method) VALUES (?, ?, ?, ?, 0, ?)",
-      [key, name, input.isLiability ? 1 : 0, input.tracksUsage ? 1 : 0, defaultPaymentMethod],
+      "INSERT INTO account_types (key, name, is_liability, tracks_usage, is_system, default_payment_method, has_closing_day) VALUES (?, ?, ?, ?, 0, ?, ?)",
+      [key, name, input.isLiability ? 1 : 0, input.tracksUsage ? 1 : 0, defaultPaymentMethod, input.hasClosingDay ? 1 : 0],
     );
     return {
       key,
@@ -851,6 +930,7 @@ class SqlFinanceRepository implements FinanceRepository {
       isSystem: false,
       isActive: true,
       defaultPaymentMethod,
+      hasClosingDay: !!input.hasClosingDay,
     };
   }
 
@@ -950,7 +1030,7 @@ class SqlFinanceRepository implements FinanceRepository {
          COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_cents END), 0) AS expense
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
-       WHERE a.is_active = 1 AND t.status = 'posted' AND substr(t.transaction_date, 1, 7) = ?`,
+       WHERE a.is_active = 1 AND t.status = 'posted' AND ${COMPETENCE_MONTH} = ?`,
       [month],
     );
     const incomeCents = row?.income ?? 0;
@@ -960,8 +1040,8 @@ class SqlFinanceRepository implements FinanceRepository {
 
   listAccounts(options: ListAccountsOptions = {}): Account[] {
     return this.db
-      .all<{ id: number; name: string; type: AccountType; opening_balance_cents: number; is_active: number }>(
-        `SELECT id, name, type, opening_balance_cents, is_active FROM accounts
+      .all<{ id: number; name: string; type: AccountType; opening_balance_cents: number; is_active: number; closing_day: number | null }>(
+        `SELECT id, name, type, opening_balance_cents, is_active, closing_day FROM accounts
           ${options.includeArchived ? "" : "WHERE is_active = 1"} ORDER BY id`,
       )
       .map((row) => ({
@@ -970,6 +1050,7 @@ class SqlFinanceRepository implements FinanceRepository {
         type: row.type,
         openingBalanceCents: row.opening_balance_cents,
         isActive: row.is_active === 1,
+        closingDay: row.closing_day,
       }));
   }
 
@@ -1006,7 +1087,7 @@ class SqlFinanceRepository implements FinanceRepository {
       `SELECT COALESCE(SUM(t.amount_cents), 0) AS total
          FROM transactions t JOIN accounts a ON a.id = t.account_id
         WHERE a.is_active = 1 AND t.status = 'posted' AND t.type = 'expense' AND t.is_extra = 1
-          AND substr(t.transaction_date, 1, 7) = ?`,
+          AND ${COMPETENCE_MONTH} = ?`,
       [month],
     );
     return row?.total ?? 0;
@@ -1016,15 +1097,29 @@ class SqlFinanceRepository implements FinanceRepository {
     assertMonth(month);
     const [year = 0, mon = 1] = month.split("-").map(Number);
     const next = mon === 12 ? `${year + 1}-01` : `${year}-${String(mon + 1).padStart(2, "0")}`;
-    const openingCents = this.activeBalance("AND t.transaction_date < ?", [`${month}-01`]);
-    const closingCents = this.activeBalance("AND t.transaction_date < ?", [`${next}-01`]);
+    const openingCents = this.activeBalance("AND t.transaction_date < ?", [`${month}-01`], "cash");
+    const closingCents = this.activeBalance("AND t.transaction_date < ?", [`${next}-01`], "cash");
+    const [cards] = this.db.all<{ spent: number; paid: number }>(
+      `SELECT
+         COALESCE((SELECT SUM(CASE t.type WHEN 'expense' THEN t.amount_cents WHEN 'income' THEN -t.amount_cents END)
+                     FROM transactions t JOIN accounts a ON a.id = t.account_id
+                    WHERE a.is_active = 1 AND t.status = 'posted' AND t.type IN ('income', 'expense') AND ${COMPETENCE_MONTH} = ?
+                      AND a.type IN (SELECT key FROM account_types WHERE is_liability = 1)), 0) AS spent,
+         COALESCE((SELECT SUM(t.amount_cents)
+                     FROM transactions t JOIN accounts a ON a.id = t.account_id
+                    WHERE a.is_active = 1 AND t.status = 'posted' AND t.type = 'transfer' AND substr(t.transaction_date, 1, 7) = ?
+                      AND a.type IN (SELECT key FROM account_types WHERE is_liability = 1)), 0) AS paid`,
+      [month, month],
+    );
+    const cardsCents = (cards?.spent ?? 0) - (cards?.paid ?? 0);
     const { incomeCents, expenseCents } = this.getMonthSummary(month);
     return {
       openingCents,
       incomeCents,
       expenseCents,
       closingCents,
-      unexplainedCents: closingCents - openingCents - (incomeCents - expenseCents),
+      cardsCents,
+      unexplainedCents: closingCents - openingCents - (incomeCents - expenseCents) - cardsCents,
     };
   }
 
@@ -1167,12 +1262,12 @@ class SqlFinanceRepository implements FinanceRepository {
     if (fromMonth > toMonth) throw new Error("Período inválido: o mês inicial vem depois do final.");
     return this.db
       .all<{ month: string; source_id: number; source_name: string; total: number }>(
-        `SELECT substr(t.transaction_date, 1, 7) AS month, s.id AS source_id, s.name AS source_name, SUM(t.amount_cents) AS total
+        `SELECT ${COMPETENCE_MONTH} AS month, s.id AS source_id, s.name AS source_name, SUM(t.amount_cents) AS total
            FROM transactions t
            JOIN accounts a ON a.id = t.account_id
            JOIN income_sources s ON s.id = t.source_id
           WHERE t.type = 'income' AND t.status = 'posted' AND a.is_active = 1
-            AND substr(t.transaction_date, 1, 7) BETWEEN ? AND ?
+            AND ${COMPETENCE_MONTH} BETWEEN ? AND ?
           GROUP BY month, s.id, s.name
           ORDER BY month, s.id`,
         [fromMonth, toMonth],
@@ -1561,7 +1656,7 @@ class SqlFinanceRepository implements FinanceRepository {
 
   getReservedSummary(): ReservedSummary {
     const reservedCents = this.reservedCents();
-    return { reservedCents, freeCents: this.getTotalBalance() - reservedCents };
+    return { reservedCents, freeCents: this.getBalanceBreakdown().cashCents - reservedCents };
   }
 
   getGoalReport(goalId: number, period: string): GoalReport {
@@ -1656,7 +1751,7 @@ class SqlFinanceRepository implements FinanceRepository {
     const incomes = this.db.all<{ id: number; amount_cents: number; account_id: number; account_name: string; source_id: number | null; source_name: string | null }>(
       `SELECT t.id, t.amount_cents, t.account_id, a.name AS account_name, t.source_id, s.name AS source_name
          FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN income_sources s ON s.id = t.source_id
-        WHERE t.type = 'income' AND t.status = 'posted' AND a.is_active = 1 AND substr(t.transaction_date, 1, 7) = ?`,
+        WHERE t.type = 'income' AND t.status = 'posted' AND a.is_active = 1 AND ${COMPETENCE_MONTH} = ?`,
       [month],
     );
     for (const row of incomes) {
@@ -1687,7 +1782,7 @@ class SqlFinanceRepository implements FinanceRepository {
          JOIN categories c ON c.id = t.category_id
          LEFT JOIN categories p ON p.id = c.parent_id
          LEFT JOIN bill_payments bp ON bp.transaction_id = t.id
-        WHERE t.type = 'expense' AND t.status = 'posted' AND a.is_active = 1 AND substr(t.transaction_date, 1, 7) = ?`,
+        WHERE t.type = 'expense' AND t.status = 'posted' AND a.is_active = 1 AND ${COMPETENCE_MONTH} = ?`,
       [month],
     );
     for (const row of expenses) {
@@ -1713,15 +1808,28 @@ class SqlFinanceRepository implements FinanceRepository {
       add("transfer", [`account:${row.from_id}`, row.from_name], [`account:${row.to_id}`, row.to_name], row.amount, [row.out_id, row.in_id]);
     }
 
-    const [goals] = this.db.all<{ total: number }>(
-      `SELECT COALESCE(SUM(c.amount_cents), 0) AS total FROM goal_contributions c JOIN goals g ON g.id = c.goal_id
-        WHERE g.status = 'active' AND substr(c.contribution_date, 1, 7) = ?`,
-      [month],
-    );
+    const goals = this.db
+      .all<{ id: number; name: string; contributed: number; withdrawn: number }>(
+        `SELECT g.id, g.name,
+                COALESCE(SUM(CASE WHEN c.amount_cents > 0 THEN c.amount_cents END), 0) AS contributed,
+                COALESCE(SUM(CASE WHEN c.amount_cents < 0 THEN -c.amount_cents END), 0) AS withdrawn
+           FROM goal_contributions c JOIN goals g ON g.id = c.goal_id
+          WHERE g.status = 'active' AND substr(c.contribution_date, 1, 7) = ?
+          GROUP BY g.id, g.name ORDER BY g.id`,
+        [month],
+      )
+      .map((row) => ({
+        goalId: row.id,
+        goalName: row.name,
+        contributedCents: row.contributed,
+        withdrawnCents: row.withdrawn,
+        netCents: row.contributed - row.withdrawn,
+      }));
     return {
       month,
       edges: [...edges.values()].sort((a, b) => b.cents - a.cents || (a.id < b.id ? -1 : 1)),
-      goalsNetCents: goals?.total ?? 0,
+      goalsNetCents: goals.reduce((total, goal) => total + goal.netCents, 0),
+      goals,
     };
   }
 
@@ -1774,6 +1882,64 @@ class SqlFinanceRepository implements FinanceRepository {
       throw new Error("O valor do aporte deve ser um número inteiro de centavos diferente de zero.");
     }
     if (!isValidDate(input.date)) throw new Error("Data inválida: use o formato AAAA-MM-DD.");
+  }
+
+  setAccountClosingDay(id: number, day: number): void {
+    const account = this.requireAccountWithType(id);
+    if (account.has_closing_day !== 1) throw new Error("Só contas de cartão têm dia de virada da fatura.");
+    this.validateClosingDay(day);
+    this.db.run("UPDATE accounts SET closing_day = ? WHERE id = ?", [day, id]);
+  }
+
+  getCardInvoice(accountId: number, today: string): CardInvoice {
+    if (!isValidDate(today)) throw new Error("Data inválida: use o formato AAAA-MM-DD.");
+    const account = this.requireAccountWithType(accountId);
+    if (account.has_closing_day !== 1) throw new Error("Esta conta não é um cartão com fatura.");
+    const closingDay = account.closing_day ?? 1;
+    const { start, nextTurn } = currentCycle(today, closingDay);
+    const previous = previousCycle(today, closingDay);
+    const spent = (from: string, until: string): number => {
+      const [row] = this.db.all<{ total: number }>(
+        `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM transactions
+          WHERE account_id = ? AND type = 'expense' AND status = 'posted' AND transaction_date >= ? AND transaction_date < ?`,
+        [accountId, from, until],
+      );
+      return row?.total ?? 0;
+    };
+    return {
+      closingDay,
+      cycleStart: start,
+      nextTurn,
+      daysUntilTurn: daysUntil(nextTurn, today),
+      openInvoiceCents: spent(start, nextTurn),
+      previousInvoiceCents: spent(previous.start, previous.end),
+      owedCents: Math.max(0, -this.getBalance(accountId)),
+    };
+  }
+
+  getBalanceBreakdown(): BalanceBreakdown {
+    let cashCents = 0;
+    let debtCents = 0;
+    const liability = new Map(this.listAccountTypes({ includeArchived: true }).map((type) => [type.key, type.isLiability]));
+    for (const account of this.listAccounts()) {
+      const balance = this.getBalance(account.id);
+      if (liability.get(account.type)) debtCents += balance;
+      else cashCents += balance;
+    }
+    return { cashCents, debtCents };
+  }
+
+  private requireAccountWithType(id: number): { has_closing_day: number; closing_day: number | null } {
+    const row = this.db.all<{ has_closing_day: number; closing_day: number | null }>(
+      "SELECT ty.has_closing_day, a.closing_day FROM accounts a JOIN account_types ty ON ty.key = a.type WHERE a.id = ?",
+      [id],
+    )[0];
+    if (!row) throw new Error("Conta não encontrada.");
+    return row;
+  }
+
+  private validateClosingDay(day: number): void {
+    if (!Number.isInteger(day) || day < 1 || day > 31) throw new Error("O dia da fatura deve ser de 1 a 31.");
   }
 
   createRecurringBill(input: NewRecurringBill): RecurringBill {
@@ -1951,7 +2117,7 @@ class SqlFinanceRepository implements FinanceRepository {
       if (occurrence.status === "paid") paidCents += occurrence.paidAmountCents ?? 0;
       else remainingCents += occurrence.expectedAmountCents;
     }
-    return { expectedCents, paidCents, remainingCents, freeAfterCents: this.getTotalBalance() - this.reservedCents() - remainingCents };
+    return { expectedCents, paidCents, remainingCents, freeAfterCents: this.getBalanceBreakdown().cashCents - this.reservedCents() - remainingCents };
   }
 
   payBill(input: PayBillInput): Transaction {
@@ -2026,13 +2192,18 @@ class SqlFinanceRepository implements FinanceRepository {
   }
 
   /** Saldos iniciais das contas ativas mais os lançamentos `posted` delas, com um filtro extra opcional. */
-  private activeBalance(extraWhere: string, params: SqlValue[]): number {
+  /** `cash` soma só contas que não são dívida; `debt`, só cartões e empréstimos. */
+  private activeBalance(extraWhere: string, params: SqlValue[], scope: "all" | "cash" | "debt" = "all"): number {
+    const kind =
+      scope === "all"
+        ? ""
+        : `AND a.type IN (SELECT key FROM account_types WHERE is_liability = ${scope === "debt" ? 1 : 0})`;
     const [row] = this.db.all<{ total: number }>(
       `SELECT
-         (SELECT COALESCE(SUM(opening_balance_cents), 0) FROM accounts WHERE is_active = 1)
+         (SELECT COALESCE(SUM(a.opening_balance_cents), 0) FROM accounts a WHERE a.is_active = 1 ${kind})
          + (SELECT COALESCE(SUM(CASE t.type WHEN 'expense' THEN -t.amount_cents ELSE t.amount_cents END), 0)
               FROM transactions t JOIN accounts a ON a.id = t.account_id
-             WHERE a.is_active = 1 AND t.status = 'posted' ${extraWhere}) AS total`,
+             WHERE a.is_active = 1 AND t.status = 'posted' ${kind} ${extraWhere}) AS total`,
       params,
     );
     return row?.total ?? 0;
@@ -2046,7 +2217,7 @@ class SqlFinanceRepository implements FinanceRepository {
          JOIN accounts a ON a.id = t.account_id
          JOIN categories c ON c.id = t.category_id
          LEFT JOIN categories p ON p.id = c.parent_id
-        WHERE a.is_active = 1 AND t.type = 'expense' AND t.status = 'posted' AND substr(t.transaction_date, 1, 7) = ?
+        WHERE a.is_active = 1 AND t.type = 'expense' AND t.status = 'posted' AND ${COMPETENCE_MONTH} = ?
         GROUP BY COALESCE(p.id, c.id), COALESCE(p.name, c.name)
         ORDER BY totalCents DESC, name`,
       [month],

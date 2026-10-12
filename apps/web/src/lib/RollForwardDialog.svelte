@@ -14,7 +14,7 @@
   } = $props();
 </script>
 
-<Dialog bind:open title="Como chegamos neste saldo" description={`Saldo total das suas contas ativas em ${monthLabel}.`}>
+<Dialog bind:open title="Como chegamos neste saldo" description={`Dinheiro nas suas contas ativas em ${monthLabel}, sem cartões e empréstimos.`}>
   <dl class="grid text-sm">
     <div class="flex items-center justify-between gap-4 border-b py-2.5">
       <dt>Saldo no início do mês</dt>
@@ -28,6 +28,12 @@
       <dt>− Despesas</dt>
       <dd><Money class="font-medium" cents={roll.expenseCents} tone="expense" /></dd>
     </div>
+    {#if roll.cardsCents !== 0}
+      <div class="flex items-center justify-between gap-4 border-b py-2.5">
+        <dt>± Cartões: compras que entram no mês − fatura paga</dt>
+        <dd><Money class="font-medium" cents={roll.cardsCents} tone="auto" showSign /></dd>
+      </div>
+    {/if}
     {#if roll.unexplainedCents !== 0}
       <div class="flex items-center justify-between gap-4 border-b py-2.5">
         <dt>± Diferença sem explicação</dt>
