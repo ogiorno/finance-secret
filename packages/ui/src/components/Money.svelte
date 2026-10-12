@@ -22,7 +22,8 @@
 
   const resolved = $derived(tone === "auto" ? (cents > 0 ? "income" : cents < 0 ? "expense" : "neutral") : tone);
   const negative = $derived(resolved === "expense" || (tone !== "income" && cents < 0));
-  const sign = $derived(showSign || resolved !== "neutral" ? (negative ? "−" : cents === 0 ? "" : "+") : "");
+  // Negativo sempre leva "−"; "+" só para receitas e quando pedido (um saldo positivo não precisa dele).
+  const sign = $derived(negative ? "−" : (tone === "income" || showSign) && cents !== 0 ? "+" : "");
 </script>
 
 <span
