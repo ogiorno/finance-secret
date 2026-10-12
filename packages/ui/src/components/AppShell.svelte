@@ -51,7 +51,7 @@
 </script>
 
 <div data-slot="app-shell" class="min-h-screen md:flex">
-  <aside class="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-1 overflow-y-auto border-r bg-sidebar p-4 md:flex">
+  <aside class="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r bg-sidebar p-4 md:flex">
     <div class="mb-4 flex items-center gap-2.5 px-2">
       <span class="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
         <Coins class="size-4.5" aria-hidden="true" />

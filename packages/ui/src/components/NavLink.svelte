@@ -39,8 +39,8 @@
     class={cn(base, layout === "side" ? side : bottom, "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground", className)}
   >
     {#if Icon}<Icon class="size-4.5 shrink-0" aria-hidden="true" />{/if}
-    <span>{label}</span>
-    <span class="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-xs leading-none font-medium">{disabledHint}</span>
+    <span class="truncate">{label}</span>
+    <span class="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs leading-none font-medium whitespace-nowrap">{disabledHint}</span>
   </span>
 {:else}
   <a

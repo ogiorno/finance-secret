@@ -1,22 +1,52 @@
 <script lang="ts">
   import "../app.css";
   import { page } from "$app/state";
-  import { ArrowLeftRight, FileDown, LayoutDashboard, Wallet } from "@lucide/svelte";
-  import { Alert, AppShell, Badge, Button, Toaster, getStoredTheme, setTheme, type AppNavItem } from "@finance/ui";
+  import {
+    ArrowLeftRight,
+    ChevronDown,
+    Database,
+    DatabaseZap,
+    FilePlus,
+    FolderOpen,
+    LayoutDashboard,
+    Moon,
+    Receipt,
+    Repeat,
+    Save,
+    Sparkles,
+    Sun,
+    TableProperties,
+    Wallet,
+  } from "@lucide/svelte";
+  import { Alert, AppShell, Button, IconButton, Menu, MonthStepper, Toaster, getStoredTheme, setTheme, type AppNavSection } from "@finance/ui";
+  import { period } from "$lib/period.svelte";
   import { session } from "$lib/session.svelte";
 
   let { children } = $props();
 
-  const links = $derived<AppNavItem[]>([
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
-    { href: "/accounts", label: "Contas", icon: Wallet },
+  const sections = $derived<AppNavSection[]>([
     {
-      href: "/backup",
-      label: "Importar e exportar",
-      shortLabel: "Arquivo",
-      icon: FileDown,
-      badge: session.dirty ? "alterações não exportadas" : undefined,
+      title: "Finanças",
+      items: [
+        { href: "/", label: "Painel", icon: LayoutDashboard },
+        { href: "/transactions", label: "Lançamentos", shortLabel: "Lançar", icon: ArrowLeftRight },
+        { href: "/accounts", label: "Contas", icon: Wallet },
+        { href: "/recurring", label: "Contas fixas", icon: Repeat, disabledHint: "Em breve" },
+        { href: "/receipts", label: "Cupons", icon: Receipt, disabledHint: "Em breve" },
+      ],
+    },
+    {
+      title: "Banco de dados",
+      items: [
+        {
+          href: "/backup",
+          label: "Importar e exportar",
+          shortLabel: "Arquivo",
+          icon: Save,
+          badge: session.dirty ? "alterações não exportadas" : undefined,
+        },
+        { href: "/editor", label: "Editor SQLite", icon: TableProperties, disabledHint: "Em breve" },
+      ],
     },
   ]);
 
@@ -29,6 +59,24 @@
     theme = theme === "dark" ? "light" : "dark";
     setTheme(theme);
   }
+
+  let fileInput: HTMLInputElement;
+
+  async function pick(event: Event & { currentTarget: HTMLInputElement }) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    await session.openFile(file);
+    event.currentTarget.value = "";
+  }
+
+  const databaseItems = $derived([
+    { label: "Abrir arquivo .db", icon: FolderOpen, onselect: () => fileInput.click() },
+    { label: "Criar banco vazio", icon: FilePlus, onselect: () => void session.createNew() },
+    { label: "Ver demonstração", icon: Sparkles, onselect: () => void session.openDemo() },
+    ...(session.isOpen ? [{ label: "Exportar este banco", icon: Save, onselect: () => session.exportFile(), separated: true }] : []),
+  ]);
+
+  const showPeriod = $derived(session.isOpen && (page.url.pathname === "/" || page.url.pathname.startsWith("/transactions")));
 </script>
 
 <svelte:window
@@ -37,14 +85,25 @@
   }}
 />
 
-<AppShell brand="Finanças" items={links} pathname={page.url.pathname}>
-  {#snippet sidebarTop()}
-    <Badge variant="secondary">Modo offline</Badge>
-  {/snippet}
-  {#snippet sidebarBottom()}
-    <Button variant="ghost" size="sm" onclick={toggleTheme} aria-label="Alternar tema claro e escuro">
-      Tema: {theme === "dark" ? "escuro" : "claro"}
-    </Button>
+<AppShell brand="Finanças" {sections} pathname={page.url.pathname}>
+  {#snippet topbar()}
+    <Menu heading="Banco de dados" items={databaseItems}>
+      {#snippet trigger()}
+        <Database class="size-4 text-primary" aria-hidden="true" />
+        <span class="max-w-40 truncate">{session.isOpen ? session.fileName : "Nenhum banco aberto"}</span>
+        <ChevronDown class="size-4 text-muted-foreground" aria-hidden="true" />
+      {/snippet}
+    </Menu>
+    {#if session.dirty}
+      <span class="flex items-center gap-1.5 text-xs text-warning">
+        <DatabaseZap class="size-3.5" aria-hidden="true" />
+        Não exportado
+      </span>
+    {/if}
+    <div class="ml-auto flex items-center gap-2">
+      {#if showPeriod}<MonthStepper bind:value={period.month} />{/if}
+      <IconButton icon={theme === "dark" ? Sun : Moon} label="Alternar tema claro e escuro" onclick={toggleTheme} />
+    </div>
   {/snippet}
   {#snippet banner()}
     {#if session.dirty}
@@ -58,5 +117,7 @@
   {/snippet}
   {@render children()}
 </AppShell>
+
+<input bind:this={fileInput} type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3" class="hidden" onchange={pick} data-testid="file-input-menu" />
 
 <Toaster />
