@@ -1,12 +1,12 @@
 ---
 name: to-spec
-description: "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
+description: "Turn the current conversation into a spec and save it as a Markdown file under .scratch/: no interview, just synthesis of what you've already discussed."
 disable-model-invocation: true
 ---
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+This project keeps specs as local Markdown files. Never open a GitHub issue, never call `gh`, never apply triage labels: the issue tracker configuration does not apply to this skill.
 
 ## Process
 
@@ -16,7 +16,7 @@ The issue tracker and triage label vocabulary should have been provided to you. 
 
 Check with the user that these seams match their expectations.
 
-3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the spec using the template below and save it to `.scratch/<feature-slug>/spec.md` (create the directory if needed; `<feature-slug>` is a short kebab-case name of the feature). If the user asked for several specs, write one directory per spec. Put `Status: ready-for-agent` on the first line of the file. Then tell the user the path of each file written; that is the end of the skill: nothing is published anywhere.
 
 <spec-template>
 

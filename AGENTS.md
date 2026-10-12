@@ -93,7 +93,7 @@ Valem para qualquer trabalho de código, planejamento ou documentação do proje
 
 Skills marcadas como **manual** têm `disable-model-invocation`: só rodam quando o usuário digitar `/<nome>`. Não as invoque por conta própria; se a tarefa casar, sugira o comando ao usuário.
 
-Antes de usar as skills de issue tracker (`to-spec`, `to-tickets`, `triage`, `wayfinder`, `implement*`), rode uma vez `/setup-matt-pocock-skills` para configurar tracker, labels e layout de docs. Se não estiver configurado, rode o setup antes.
+Antes de usar as skills de issue tracker (`triage`, `wayfinder`, `implement*`), rode uma vez `/setup-matt-pocock-skills` para configurar tracker, labels e layout de docs. Se não estiver configurado, rode o setup antes.
 
 ### engineering
 
@@ -111,8 +111,8 @@ Antes de usar as skills de issue tracker (`to-spec`, `to-tickets`, `triage`, `wa
 | `ask-matt` (manual) | Descobrir qual skill/fluxo deste conjunto serve à situação (roteador). | `.claude/skills/ask-matt/SKILL.md` |
 | `setup-matt-pocock-skills` (manual) | Configuração única: issue tracker, vocabulário de labels de triagem e layout de docs. | `.claude/skills/setup-matt-pocock-skills/SKILL.md` |
 | `grill-with-docs` (manual) | Entrevista implacável para afiar um plano/design, criando ADRs e glossário no processo. | `.claude/skills/grill-with-docs/SKILL.md` |
-| `to-spec` (manual) | Transformar a conversa atual em spec e publicar no issue tracker (sem entrevista). | `.claude/skills/to-spec/SKILL.md` |
-| `to-tickets` (manual) | Quebrar plano/spec em tickets tracer-bullet com dependências, publicados no tracker. | `.claude/skills/to-tickets/SKILL.md` |
+| `to-spec` (manual) | Transformar a conversa atual em spec salva em `.scratch/<feature>/spec.md` (sem entrevista, sem GitHub). | `.claude/skills/to-spec/SKILL.md` |
+| `to-tickets` (manual) | Quebrar plano/spec em tickets tracer-bullet com dependências, salvos em `.scratch/<feature>/issues/`. | `.claude/skills/to-tickets/SKILL.md` |
 | `implement` (manual) | Implementar trabalho a partir de spec ou conjunto de tickets. | `.claude/skills/implement/SKILL.md` |
 | `implement-spec` (manual) | Implementar em código o resultado de `/to-spec` + `/to-tickets`. | `.claude/skills/implement-spec/SKILL.md` |
 | `wayfinder` (manual) | Planejar trabalho grande demais para uma sessão, como mapa de tickets de decisão no tracker. | `.claude/skills/wayfinder/SKILL.md` |
@@ -148,4 +148,4 @@ Single-context: um `GLOSSARY.md` + `docs/adr/` na raiz. Ver `docs/agents/domain.
 
 ## Design system
 
-Toda UI usa `@finance/ui` (`packages/ui`). Cores, raios, sombras e fontes só existem em `packages/ui/src/theme.css`; componentes e telas usam tokens (`bg-primary`, `text-income`), nunca valores literais. Rode `npm run check:tokens -w @finance/ui` após mexer em UI. Detalhes em `docs/design-system.md`.
+Toda UI usa `@finance/ui` (`packages/ui`). Cores, raios, sombras e fontes só existem em `packages/ui/src/theme.css`; componentes e telas usam tokens (`bg-primary`, `text-income`), nunca valores literais. Rode `npm run check:tokens -w @finance/ui` após mexer em UI. Detalhes em `docs/design-system.md`. Para criar ou alterar qualquer tela ou componente de UI, use a skill `finance-ui` (`.claude/skills/finance-ui/SKILL.md`); padrões de UX e telas em `docs/ui-spec.md`.
