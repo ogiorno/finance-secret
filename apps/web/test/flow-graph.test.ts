@@ -35,24 +35,41 @@ describe("buildFlowGraph", () => {
 
     expect(graph.sources.map((node) => node.label)).toEqual(["Eu", "Esposa"]);
     expect(graph.accounts.map((node) => node.label)).toEqual(["Conta corrente", "Cartão"]);
-    expect(graph.destinations.map((node) => node.label)).toEqual(["Contas a pagar", "Mercado", "Saúde"]);
+    expect(graph.destinations.map((node) => node.label)).toEqual(["Contas a pagar", "Saúde", "Mercado"]);
   });
 
-  it("totals what each node received and sent, in whole cents", () => {
+  it("totals what each node received and spent, in whole cents, leaving transfers out of the boxes", () => {
     const graph = buildFlowGraph(edges);
     const account = (label: string) => graph.accounts.find((node) => node.label === label);
 
     expect(graph.sources[0]).toMatchObject({ inCents: 0, outCents: 500000 });
-    expect(account("Conta corrente")).toMatchObject({ inCents: 750000, outCents: 180000 + 17500 + 65000 });
-    expect(account("Cartão")).toMatchObject({ inCents: 65000, outCents: 52200 });
+    expect(account("Conta corrente")).toMatchObject({ inCents: 750000, outCents: 180000 + 17500 });
+    expect(account("Cartão")).toMatchObject({ inCents: 0, outCents: 52200 });
     expect(graph.destinations.find((node) => node.label === "Mercado")).toMatchObject({ inCents: 52200, outCents: 0 });
   });
 
-  it("keeps transfers as their own kind of edge, not as spending", () => {
+  it("keeps transfers apart, as their own list, and not as spending", () => {
     const graph = buildFlowGraph(edges);
 
-    expect(graph.edges.filter((candidate) => candidate.kind === "transfer")).toHaveLength(1);
+    expect(graph.transfers.map((transfer) => [transfer.fromLabel, transfer.toLabel, transfer.cents])).toEqual([["Conta corrente", "Cartão", 65000]]);
     expect(graph.destinations.some((node) => node.label === "Cartão")).toBe(false);
+    expect(graph.edges.some((candidate) => candidate.kind === "transfer")).toBe(true);
+  });
+
+  it("does not draw an account that only took part in transfers", () => {
+    const onlyTransfers = [edge("transfer", checking, ["account:9", "Reserva"], 100000), edge("expense", checking, dest(1, "Mercado"), 100)];
+
+    expect(buildFlowGraph(onlyTransfers).accounts.map((node) => node.label)).toEqual(["Conta corrente"]);
+  });
+
+  it("gives each destination its share of all the spending, in whole percent", () => {
+    const graph = buildFlowGraph(edges);
+
+    expect(graph.destinations.map((node) => [node.label, node.percent])).toEqual([
+      ["Contas a pagar", 72],
+      ["Saúde", 7],
+      ["Mercado", 21],
+    ]);
   });
 
   it("groups the smallest destinations into Outros once there are too many, keeping extras and bills", () => {
@@ -76,12 +93,34 @@ describe("buildFlowGraph", () => {
     expect(transactionIdsOf(graph, { type: "node", key: "dest:other" })).toHaveLength(4);
   });
 
+  it("lists the destinations account by account, biggest first inside each, to keep the lines from crossing", () => {
+    const mixed = [
+      edge("expense", card, dest(1, "Lazer"), 5000),
+      edge("expense", checking, dest(2, "Aluguel"), 90000),
+      edge("expense", card, dest(3, "Mercado"), 30000),
+      edge("expense", checking, dest(4, "Saúde"), 10000),
+    ];
+
+    expect(buildFlowGraph(mixed).destinations.map((node) => node.label)).toEqual(["Aluguel", "Saúde", "Mercado", "Lazer"]);
+  });
+
+  it("puts a destination under the account that feeds it the most when two accounts share it", () => {
+    const shared = [
+      edge("expense", checking, dest(1, "Mercado"), 1000),
+      edge("expense", card, dest(1, "Mercado"), 9000),
+      edge("expense", checking, dest(2, "Aluguel"), 50000),
+    ];
+
+    expect(buildFlowGraph(shared).destinations.map((node) => node.label)).toEqual(["Aluguel", "Mercado"]);
+    expect(buildFlowGraph(shared).accounts.map((node) => node.label)).toEqual(["Conta corrente", "Cartão"]);
+  });
+
   it("does not group when everything fits", () => {
     expect(buildFlowGraph(edges, { maxDestinations: 6 }).destinations.some((node) => node.label === "Outros")).toBe(false);
   });
 
   it("handles a month with nothing", () => {
-    expect(buildFlowGraph([])).toEqual({ sources: [], accounts: [], destinations: [], edges: [] });
+    expect(buildFlowGraph([])).toEqual({ sources: [], accounts: [], destinations: [], transfers: [], edges: [] });
   });
 });
 

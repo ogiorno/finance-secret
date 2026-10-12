@@ -21,6 +21,7 @@
   } from "@finance/ui";
   import { buildFlowGraph, transactionIdsOf, type FlowSelection } from "$lib/flow-graph";
   import MoneyFlowDiagram from "$lib/MoneyFlowDiagram.svelte";
+  import MoneyFlowStack from "$lib/MoneyFlowStack.svelte";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { period } from "$lib/period.svelte";
   import { session } from "$lib/session.svelte";
@@ -68,7 +69,7 @@
   <PageHeader title="Fluxo do dinheiro" />
   <OpenDatabasePanel />
 {:else}
-  <PageHeader title="Fluxo do dinheiro" description="De onde o dinheiro veio, por onde passou e para onde foi no mês. Clique numa caixa ou numa seta para ver os lançamentos." />
+  <PageHeader title="Fluxo do dinheiro" description="De onde o dinheiro veio, por onde passou e para onde foi no mês. Compras no cartão aparecem no mês em que a fatura fecha. Toque ou clique numa caixa, linha ou item para ver os lançamentos." />
 
   {#if data.graph.edges.length === 0}
     <Card>
@@ -77,35 +78,64 @@
       </CardContent>
     </Card>
   {:else}
-    <div class="mb-2 grid grid-cols-3 gap-2 text-center text-sm font-medium">
+    <div class="mb-2 hidden grid-cols-3 gap-2 text-center md:grid">
       <div class="flex items-center justify-center gap-1">
-        Quem trouxe
+        <Badge variant="warning">Quem trouxe</Badge>
         <InfoTip text="As fontes de renda: você, sua esposa, outras. Só conta o que já foi recebido." label="Sobre as fontes" />
       </div>
       <div class="flex items-center justify-center gap-1">
-        Onde passou
-        <InfoTip text="As contas por onde o dinheiro entrou e saiu: corrente, cartão, vale-refeição. A origem de cada gasto é a conta." label="Sobre as contas" />
+        <Badge variant="warning">Onde passou</Badge>
+        <InfoTip text="As contas por onde o dinheiro entrou e saiu: corrente, cartão, vale-refeição. Cada conta tem a sua cor, e a origem de cada gasto é a conta." label="Sobre as contas" />
       </div>
       <div class="flex items-center justify-center gap-1">
-        Para onde foi
+        <Badge variant="warning">Para onde foi</Badge>
         <InfoTip
-          text="As categorias das despesas, mais Contas a pagar (as recorrentes) e Despesas extras (os imprevistos). As setas tracejadas entre contas são transferências: não são gasto."
+          text="As categorias das despesas, mais Contas a pagar (as recorrentes) e Despesas extras (os imprevistos), com a parte de cada uma no total gasto. Embaixo, o que foi guardado nas metas."
           label="Sobre os destinos"
         />
       </div>
     </div>
 
-    <Card class="mb-4">
-      <CardContent><MoneyFlowDiagram graph={data.graph} bind:selection /></CardContent>
+    <!-- Telas largas: o diagrama de caixas e curvas. Telas estreitas: um cartão por conta, sem linhas para seguir. -->
+    <Card class="mb-4 hidden md:block">
+      <CardContent><MoneyFlowDiagram graph={data.graph} goals={data.flow.goals} bind:selection /></CardContent>
     </Card>
+    <div class="mb-4 md:hidden">
+      <MoneyFlowStack graph={data.graph} goals={data.flow.goals} bind:selection />
+    </div>
 
-    {#if data.flow.goalsNetCents !== 0}
-      <Alert class="mb-4">
-        <span class="flex flex-wrap items-center gap-2">
-          <PiggyBank class="size-4" aria-hidden="true" />
-          Nas metas, o dinheiro guardado variou <Money class="font-medium" cents={data.flow.goalsNetCents} tone="auto" showSign /> neste mês. Esse dinheiro não saiu das suas contas, por isso não aparece como seta.
-        </span>
-      </Alert>
+    {#if data.graph.transfers.length > 0}
+      <div class="mb-4">
+        <p class="mb-2 flex items-center gap-1 text-sm text-muted-foreground">
+          Entre suas contas (não é gasto)
+          <InfoTip text="Transferências entre as suas contas, como pagar a fatura do cartão ou guardar na poupança. O dinheiro só muda de lugar." label="Sobre as transferências" />
+        </p>
+        <ul class="flex flex-wrap gap-2">
+          {#each data.graph.transfers as transfer (transfer.id)}
+            <li>
+              <Button
+                variant="outline"
+                size="sm"
+                class="border-dashed"
+                aria-pressed={selection?.type === "edge" && selection.id === transfer.id}
+                onclick={() => (selection = { type: "edge", id: transfer.id })}
+              >
+                {transfer.fromLabel}
+                <ArrowRight aria-hidden="true" />
+                {transfer.toLabel}
+                <Money class="font-semibold" cents={transfer.cents} />
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    {#if data.flow.goals.length > 0}
+      <p class="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <PiggyBank class="size-4" aria-hidden="true" />
+        Nas metas, o dinheiro guardado variou <Money class="font-medium" cents={data.flow.goalsNetCents} tone="auto" showSign /> neste mês. Esse dinheiro não saiu das suas contas, por isso a caixa das metas não tem seta.
+      </p>
     {/if}
 
     {#if selection}

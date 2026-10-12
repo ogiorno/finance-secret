@@ -7,12 +7,17 @@ export interface FlowNode {
   inCents: number;
   /** O que saiu deste ponto. */
   outCents: number;
+  /** Só nos destinos: a parte de todo o gasto do mês, em percentual inteiro. */
+  percent: number;
 }
 
 export interface FlowGraph {
   sources: FlowNode[];
   accounts: FlowNode[];
   destinations: FlowNode[];
+  /** Movimento entre contas suas: não é gasto e não entra nas caixas. */
+  transfers: MoneyFlowEdge[];
+  /** Todos os trechos, inclusive transferências, para poder escolher qualquer um. */
   edges: MoneyFlowEdge[];
 }
 
@@ -31,12 +36,13 @@ export function buildFlowGraph(input: MoneyFlowEdge[], options: { maxDestination
   const touch = (key: string, label: string): FlowNode => {
     let node = nodes.get(key);
     if (!node) {
-      node = { key, label, inCents: 0, outCents: 0 };
+      node = { key, label, inCents: 0, outCents: 0, percent: 0 };
       nodes.set(key, node);
     }
     return node;
   };
   for (const edge of edges) {
+    if (edge.kind === "transfer") continue;
     touch(edge.fromKey, edge.fromLabel).outCents += edge.cents;
     touch(edge.toKey, edge.toLabel).inCents += edge.cents;
   }
@@ -44,7 +50,41 @@ export function buildFlowGraph(input: MoneyFlowEdge[], options: { maxDestination
     [...nodes.values()]
       .filter((node) => node.key.startsWith(prefix))
       .sort((a, b) => b.inCents + b.outCents - (a.inCents + a.outCents) || a.label.localeCompare(b.label, "pt-BR"));
-  return { sources: column("source:"), accounts: column("account:"), destinations: column("dest:"), edges };
+  const accounts = column("account:");
+  const destinations = orderDestinations(column("dest:"), edges, accounts);
+  const spending = destinations.reduce((total, node) => total + node.inCents, 0);
+  for (const node of destinations) node.percent = spending > 0 ? Math.round((node.inCents * 100) / spending) : 0;
+  return {
+    sources: column("source:"),
+    accounts,
+    destinations,
+    transfers: edges.filter((edge) => edge.kind === "transfer"),
+    edges,
+  };
+}
+
+/**
+ * Agrupa os destinos pela conta que mais os alimenta (na ordem das contas) e, dentro de cada conta, do maior para o
+ * menor. Assim as linhas de uma mesma conta ficam juntas e se cruzam menos.
+ */
+function orderDestinations(destinations: FlowNode[], edges: MoneyFlowEdge[], accounts: FlowNode[]): FlowNode[] {
+  const rank = new Map(accounts.map((account, index) => [account.key, index]));
+  const owner = new Map<string, number>();
+  for (const node of destinations) {
+    let best = -1;
+    let bestRank = Number.MAX_SAFE_INTEGER;
+    for (const edge of edges) {
+      if (edge.kind !== "expense" || edge.toKey !== node.key) continue;
+      if (edge.cents > best || (edge.cents === best && (rank.get(edge.fromKey) ?? 0) < bestRank)) {
+        best = edge.cents;
+        bestRank = rank.get(edge.fromKey) ?? 0;
+      }
+    }
+    owner.set(node.key, bestRank);
+  }
+  return [...destinations].sort(
+    (a, b) => (owner.get(a.key) ?? 0) - (owner.get(b.key) ?? 0) || b.inCents - a.inCents || a.label.localeCompare(b.label, "pt-BR"),
+  );
 }
 
 function groupSmallDestinations(edges: MoneyFlowEdge[], maxDestinations: number): MoneyFlowEdge[] {
