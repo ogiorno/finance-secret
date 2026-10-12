@@ -3,7 +3,7 @@
 
   let {
     cents,
-    duration = 900,
+    duration = 350,
     ...rest
   }: Omit<import("svelte/elements").HTMLAttributes<HTMLSpanElement>, "children"> & {
     cents: number;
