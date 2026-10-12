@@ -13,6 +13,7 @@
 
   let element: HTMLDivElement;
   let chart: echarts.ECharts | undefined;
+  const description = $derived(`Despesas por categoria. ${data.map((item) => `${item.name}: ${formatBRL(item.totalCents)}`).join("; ")}. Os mesmos valores estão na tabela ao lado.`);
 
   function render() {
     if (!chart) return;
@@ -21,7 +22,11 @@
       {
         color: data.map((item) => tokenColor(`--${toneForName(item.name)}`)),
         // Padrões (decal) além da cor: o gráfico não depende só de cor para ser lido.
-        aria: { enabled: true, decal: { show: true } },
+        aria: {
+          enabled: true,
+          description,
+          decal: { show: true },
+        },
         tooltip: { trigger: "item", formatter: (p: { name: string; value: number }) => `${p.name}: ${formatBRL(p.value)}` },
         series: [
           {
@@ -59,4 +64,4 @@
   });
 </script>
 
-<div bind:this={element} class="h-56 w-full" role="img" aria-label="Gráfico de despesas por categoria; os mesmos valores estão na tabela ao lado"></div>
+<div bind:this={element} class="h-56 w-full" role="img" aria-label={description}></div>

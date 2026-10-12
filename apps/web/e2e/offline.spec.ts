@@ -56,7 +56,7 @@ test("create, edit, export and reopen keeps the data", async ({ page }) => {
 
   // Recarregar descarta a memória (como fechar a aba): só o arquivo exportado guarda os dados.
   await page.goto("/");
-  await expect(page.getByText("Abrir seus dados")).toBeVisible();
+  await expect(page.getByText("Comece com seus dados")).toBeVisible();
   await page.getByTestId("file-input").setInputFiles(path);
   await expect(page.getByText("Saldo total")).toBeVisible();
   await expect(page.getByText(/919,50/)).toBeVisible();
