@@ -114,7 +114,9 @@ describe.each(drivers)("migration 002 ($name)", ({ create }) => {
   it("upgrades a version 1 database keeping accounts, transactions and their links", () => {
     const driver = create();
     driver.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
-    driver.exec(migrations[0]!.sql);
+    const [first] = migrations;
+    if (!first) throw new Error("Nenhuma migration encontrada.");
+    driver.exec(first.sql);
     driver.run("INSERT INTO schema_migrations (version, applied_at) VALUES (1, '2026-01-01T00:00:00Z')");
     driver.run("INSERT INTO accounts (name, type, opening_balance_cents, created_at) VALUES ('Antiga', 'credit_card', -5000, '2026-01-01')");
     driver.run("INSERT INTO categories (name, type) VALUES ('Mercado', 'expense')");
