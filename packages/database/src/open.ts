@@ -28,13 +28,22 @@ export function openDatabase(driver: Driver): FinanceDatabase {
   }
 
   for (const migration of migrations.filter((m) => m.version > stored)) {
-    driver.transaction(() => {
-      driver.exec(migration.sql);
-      driver.run("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", [
-        migration.version,
-        new Date().toISOString(),
-      ]);
-    });
+    // Recriar uma tabela referenciada exige chaves estrangeiras desligadas (a configuração não vale dentro de transação).
+    if (migration.rebuildsTables) driver.exec("PRAGMA foreign_keys = OFF");
+    try {
+      driver.transaction(() => {
+        driver.exec(migration.sql);
+        driver.run("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", [
+          migration.version,
+          new Date().toISOString(),
+        ]);
+        if (migration.rebuildsTables && driver.all("PRAGMA foreign_key_check").length > 0) {
+          throw new Error("A migration deixou referências quebradas; nada foi alterado.");
+        }
+      });
+    } finally {
+      driver.exec("PRAGMA foreign_keys = ON");
+    }
   }
 
   return { driver, schemaVersion: CURRENT_SCHEMA_VERSION };

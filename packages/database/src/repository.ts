@@ -2,7 +2,10 @@ import { buildTransfer, validateTransaction, type CategoryType } from "@finance/
 import type { Driver, SqlValue } from "./driver";
 import type { FinanceDatabase } from "./open";
 
-export type AccountType = "checking" | "savings" | "cash" | "wallet" | "credit_card" | "loan";
+/** Chave de um tipo de conta (`account_types.key`). Os tipos de fábrica estão em `BUILT_IN_ACCOUNT_TYPES`. */
+export type AccountType = string;
+
+export const BUILT_IN_ACCOUNT_TYPES = ["checking", "savings", "cash", "wallet", "credit_card", "loan", "meal_voucher"] as const;
 export type TransactionStatus = "pending" | "posted";
 
 export interface Account {
@@ -12,6 +15,35 @@ export interface Account {
   openingBalanceCents: number;
   /** Falso quando a conta foi arquivada (Archived): fica fora de novos lançamentos e do saldo total. */
   isActive: boolean;
+}
+
+export interface AccountTypeRecord {
+  key: AccountType;
+  name: string;
+  /** Contas deste tipo começam devendo (cartão, empréstimo). */
+  isLiability: boolean;
+  /** Mostra no painel quanto entrou e quanto saiu (vale-alimentação). */
+  tracksUsage: boolean;
+  /** Tipos de fábrica não podem ser apagados. */
+  isSystem: boolean;
+  isActive: boolean;
+}
+
+export interface NewAccountType {
+  name: string;
+  isLiability?: boolean;
+  tracksUsage?: boolean;
+}
+
+export interface AccountTypeUsage {
+  typeKey: AccountType;
+  typeName: string;
+  /** Saldo atual de todas as contas ativas do tipo. */
+  balanceCents: number;
+  /** Receitas posted do mês nessas contas. */
+  creditedCents: number;
+  /** Despesas posted do mês nessas contas. */
+  usedCents: number;
 }
 
 export interface Category {
@@ -131,6 +163,7 @@ export const DEFAULT_CATEGORIES: { name: string; type: CategoryType; children?: 
   { name: "Outras despesas", type: "expense" },
   { name: "Salário", type: "income" },
   { name: "Rendimentos", type: "income" },
+  { name: "Vale-alimentação", type: "income" },
   { name: "Outras receitas", type: "income" },
 ];
 
@@ -148,6 +181,17 @@ export interface FinanceRepository {
   updateTransaction(id: number, input: NewIncomeOrExpense | NewTransfer): void;
   /** Remove o lançamento; para transferência, remove as duas pernas. */
   deleteTransaction(id: number): void;
+  /** Tipos de conta ativos (e os arquivados, se pedido), de fábrica primeiro. */
+  listAccountTypes(options?: ListAccountsOptions): AccountTypeRecord[];
+  createAccountType(input: NewAccountType): AccountTypeRecord;
+  /** Renomeia e liga ou desliga o acompanhamento de uso; a natureza (dívida ou não) não muda. */
+  updateAccountType(key: AccountType, changes: { name?: string; tracksUsage?: boolean }): void;
+  /** Arquiva (`false`) ou reativa (`true`) um tipo, sem mexer nas contas que já o usam. */
+  setAccountTypeActive(key: AccountType, active: boolean): void;
+  /** Só apaga tipo próprio e sem contas; use `setAccountTypeActive` nos demais. */
+  deleteAccountType(key: AccountType): void;
+  /** Para cada tipo que acompanha uso, saldo atual e entradas e saídas do mês `YYYY-MM`. */
+  getAccountTypeUsage(month: string): AccountTypeUsage[];
   renameAccount(id: number, name: string): void;
   /** Arquiva (`false`) ou reativa (`true`) a conta, sem apagar o histórico. */
   setAccountActive(id: number, active: boolean): void;
@@ -179,6 +223,9 @@ class SqlFinanceRepository implements FinanceRepository {
   constructor(private readonly db: Driver) {}
 
   createAccount(input: NewAccount): Account {
+    const accountType = this.db.all<{ is_active: number }>("SELECT is_active FROM account_types WHERE key = ?", [input.type])[0];
+    if (!accountType) throw new Error("Tipo de conta não encontrado.");
+    if (accountType.is_active !== 1) throw new Error("Tipo de conta arquivado: escolha outro.");
     const openingBalanceCents = input.openingBalanceCents ?? 0;
     const { lastInsertRowid } = this.db.run(
       "INSERT INTO accounts (name, type, opening_balance_cents, created_at) VALUES (?, ?, ?, ?)",
@@ -300,6 +347,91 @@ class SqlFinanceRepository implements FinanceRepository {
       `UPDATE transactions SET account_id = ?, category_id = ?, type = ?, amount_cents = ?, description = ?,
               transaction_date = ?, status = ?, updated_at = ? WHERE id = ?`,
       [input.accountId, input.categoryId, input.type, input.amountCents, input.description ?? "", input.date, input.status ?? "posted", now, id],
+    );
+  }
+
+  listAccountTypes(options: ListAccountsOptions = {}): AccountTypeRecord[] {
+    return this.db
+      .all<{ key: string; name: string; is_liability: number; tracks_usage: number; is_system: number; is_active: number }>(
+        `SELECT key, name, is_liability, tracks_usage, is_system, is_active FROM account_types
+          ${options.includeArchived ? "" : "WHERE is_active = 1"} ORDER BY is_system DESC, rowid`,
+      )
+      .map((row) => ({
+        key: row.key,
+        name: row.name,
+        isLiability: row.is_liability === 1,
+        tracksUsage: row.tracks_usage === 1,
+        isSystem: row.is_system === 1,
+        isActive: row.is_active === 1,
+      }));
+  }
+
+  createAccountType(input: NewAccountType): AccountTypeRecord {
+    const name = input.name.trim();
+    if (name.length === 0) throw new Error("O nome do tipo não pode ficar vazio.");
+    const taken = new Set(this.db.all<{ key: string }>("SELECT key FROM account_types").map((row) => row.key));
+    const base =
+      name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "") || "tipo";
+    let key = base;
+    for (let n = 2; taken.has(key); n++) key = `${base}_${n}`;
+    this.db.run("INSERT INTO account_types (key, name, is_liability, tracks_usage, is_system) VALUES (?, ?, ?, ?, 0)", [
+      key,
+      name,
+      input.isLiability ? 1 : 0,
+      input.tracksUsage ? 1 : 0,
+    ]);
+    return { key, name, isLiability: !!input.isLiability, tracksUsage: !!input.tracksUsage, isSystem: false, isActive: true };
+  }
+
+  updateAccountType(key: AccountType, changes: { name?: string; tracksUsage?: boolean }): void {
+    this.requireAccountType(key);
+    if (changes.name !== undefined) {
+      if (changes.name.trim().length === 0) throw new Error("O nome do tipo não pode ficar vazio.");
+      this.db.run("UPDATE account_types SET name = ? WHERE key = ?", [changes.name.trim(), key]);
+    }
+    if (changes.tracksUsage !== undefined) {
+      this.db.run("UPDATE account_types SET tracks_usage = ? WHERE key = ?", [changes.tracksUsage ? 1 : 0, key]);
+    }
+  }
+
+  setAccountTypeActive(key: AccountType, active: boolean): void {
+    this.requireAccountType(key);
+    this.db.run("UPDATE account_types SET is_active = ? WHERE key = ?", [active ? 1 : 0, key]);
+  }
+
+  deleteAccountType(key: AccountType): void {
+    const type = this.requireAccountType(key);
+    if (type.is_system === 1) throw new Error("Tipos de fábrica não podem ser apagados: arquive-o.");
+    const [row] = this.db.all<{ total: number }>("SELECT COUNT(*) AS total FROM accounts WHERE type = ?", [key]);
+    if ((row?.total ?? 0) > 0) throw new Error("Há contas deste tipo: arquive-o em vez de apagar.");
+    this.db.run("DELETE FROM account_types WHERE key = ?", [key]);
+  }
+
+  getAccountTypeUsage(month: string): AccountTypeUsage[] {
+    assertMonth(month);
+    return this.db.all<AccountTypeUsage>(
+      `SELECT ty.key AS typeKey, ty.name AS typeName,
+              COALESCE(SUM(a.opening_balance_cents), 0)
+                + COALESCE((SELECT SUM(CASE t.type WHEN 'expense' THEN -t.amount_cents ELSE t.amount_cents END)
+                              FROM transactions t JOIN accounts x ON x.id = t.account_id
+                             WHERE x.type = ty.key AND x.is_active = 1 AND t.status = 'posted'), 0) AS balanceCents,
+              COALESCE((SELECT SUM(t.amount_cents) FROM transactions t JOIN accounts x ON x.id = t.account_id
+                         WHERE x.type = ty.key AND x.is_active = 1 AND t.status = 'posted' AND t.type = 'income'
+                           AND substr(t.transaction_date, 1, 7) = ?), 0) AS creditedCents,
+              COALESCE((SELECT SUM(t.amount_cents) FROM transactions t JOIN accounts x ON x.id = t.account_id
+                         WHERE x.type = ty.key AND x.is_active = 1 AND t.status = 'posted' AND t.type = 'expense'
+                           AND substr(t.transaction_date, 1, 7) = ?), 0) AS usedCents
+         FROM account_types ty
+         LEFT JOIN accounts a ON a.type = ty.key AND a.is_active = 1
+        WHERE ty.tracks_usage = 1 AND ty.is_active = 1
+        GROUP BY ty.key, ty.name
+        ORDER BY ty.rowid`,
+      [month, month],
     );
   }
 
@@ -477,6 +609,12 @@ class SqlFinanceRepository implements FinanceRepository {
         status: row.status,
         transferGroupId: row.transfer_group_id,
       }));
+  }
+
+  private requireAccountType(key: string): { is_system: number } {
+    const type = this.db.all<{ is_system: number }>("SELECT is_system FROM account_types WHERE key = ?", [key])[0];
+    if (!type) throw new Error("Tipo de conta não encontrado.");
+    return type;
   }
 
   private requireActiveAccount(id: number): void {
