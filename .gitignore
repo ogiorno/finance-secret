@@ -12,3 +12,25 @@ dist/
 test-results/
 playwright-report/
 .wrangler/
+
+# SQLite auxiliares e travas
+*.db-wal
+*.db-shm
+*.db-journal
+*.db.lock
+
+# Configuração local do servidor (chave e provedor de IA ficam fora do Git, ADR 0004)
+config.local.json
+*.local.json
+.finance/
+
+# Ferramentas e sistema
+.claude/settings.local.json
+*.tsbuildinfo
+coverage/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
