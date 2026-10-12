@@ -44,3 +44,5 @@ Pendentes (exigem `bits-ui` para acessibilidade de teclado): `Dialog`, `Select`,
 
 <Kpi label="Receitas do mês"><Money cents={523000} tone="income" /></Kpi>
 ```
+
+Auditoria das telas, padrões de UX, componentes a criar e telas novas: [ui-spec.md](ui-spec.md).
