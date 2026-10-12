@@ -1,7 +1,7 @@
 <script lang="ts">
   import { parseBRLToCents } from "@finance/core";
   import type { TransactionListItem } from "@finance/database";
-  import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, NativeSelect } from "@finance/ui";
+  import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Label, Link, NativeSelect, PageHeader } from "@finance/ui";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import TransactionTable from "$lib/TransactionTable.svelte";
   import { session } from "$lib/session.svelte";
@@ -88,61 +88,68 @@
 
 <svelte:head><title>Transações · Finanças</title></svelte:head>
 
-<h1 class="mb-6 text-2xl font-semibold">Transações</h1>
+<PageHeader title="Transações" />
 
 {#if !data}
   <OpenDatabasePanel />
 {:else if data.accounts.length === 0}
-  <Card><CardContent>Crie uma conta em <a class="font-medium text-primary underline" href="/accounts">Contas</a> antes de lançar.</CardContent></Card>
+  <Card><CardContent>Crie uma conta em <Link href="/accounts">Contas</Link> antes de lançar.</CardContent></Card>
 {:else}
   <Card class="mb-4">
     <CardHeader><CardTitle>Novo lançamento</CardTitle></CardHeader>
     <CardContent>
       <form class="grid grid-cols-1 gap-3 md:grid-cols-3" onsubmit={submit}>
-        <div class="grid gap-1.5">
-          <Label for="kind">Tipo</Label>
-          <NativeSelect id="kind" bind:value={kind} onchange={() => (categoryId = "")}>
+        <Field label="Tipo">
+          {#snippet control(field)}
+            <NativeSelect {...field} bind:value={kind} onchange={() => (categoryId = "")}>
             <option value="expense">Despesa</option>
             <option value="income">Receita</option>
             <option value="transfer">Transferência</option>
           </NativeSelect>
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="account">{kind === "transfer" ? "De" : "Conta"}</Label>
-          <NativeSelect id="account" bind:value={accountId} required>
+          {/snippet}
+        </Field>
+        <Field label={kind === "transfer" ? "De" : "Conta"}>
+          {#snippet control(field)}
+            <NativeSelect {...field} bind:value={accountId} required>
             <option value="" disabled>Selecione</option>
             {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
           </NativeSelect>
-        </div>
+          {/snippet}
+        </Field>
         {#if kind === "transfer"}
-          <div class="grid gap-1.5">
-            <Label for="to-account">Para</Label>
-            <NativeSelect id="to-account" bind:value={toAccountId} required>
+          <Field label="Para">
+            {#snippet control(field)}
+              <NativeSelect {...field} bind:value={toAccountId} required>
               <option value="" disabled>Selecione</option>
               {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
             </NativeSelect>
-          </div>
+            {/snippet}
+          </Field>
         {:else}
-          <div class="grid gap-1.5">
-            <Label for="category">Categoria</Label>
-            <NativeSelect id="category" bind:value={categoryId} required>
+          <Field label="Categoria">
+            {#snippet control(field)}
+              <NativeSelect {...field} bind:value={categoryId} required>
               <option value="" disabled>Selecione</option>
               {#each categoryOptions as category (category.id)}<option value={String(category.id)}>{category.label}</option>{/each}
             </NativeSelect>
-          </div>
+            {/snippet}
+          </Field>
         {/if}
-        <div class="grid gap-1.5">
-          <Label for="amount">Valor (R$)</Label>
-          <Input id="amount" bind:value={amount} inputmode="decimal" placeholder="0,00" required />
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="date">Data</Label>
-          <Input id="date" type="date" bind:value={date} required />
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="description">Descrição</Label>
-          <Input id="description" bind:value={description} placeholder="Opcional" />
-        </div>
+        <Field label="Valor (R$)">
+          {#snippet control(field)}
+            <Input {...field} bind:value={amount} inputmode="decimal" placeholder="0,00" required />
+          {/snippet}
+        </Field>
+        <Field label="Data">
+          {#snippet control(field)}
+            <Input {...field} type="date" bind:value={date} required />
+          {/snippet}
+        </Field>
+        <Field label="Descrição">
+          {#snippet control(field)}
+            <Input {...field} bind:value={description} placeholder="Opcional" />
+          {/snippet}
+        </Field>
         <div class="flex items-center gap-4 md:col-span-3">
           {#if kind !== "transfer"}
             <Label class="font-normal"><input type="checkbox" bind:checked={pending} /> Ainda não aconteceu (pendente)</Label>
@@ -159,17 +166,19 @@
     <CardHeader>
       <CardTitle>Lançamentos</CardTitle>
       <div class="flex flex-wrap gap-3 pt-2">
-        <div class="grid gap-1.5">
-          <Label for="filter-month">Mês</Label>
-          <Input id="filter-month" type="month" bind:value={filterMonth} class="w-44" />
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="filter-account">Conta</Label>
-          <NativeSelect id="filter-account" bind:value={filterAccount} class="w-48">
+        <Field label="Mês">
+          {#snippet control(field)}
+            <Input {...field} type="month" bind:value={filterMonth} class="w-44" />
+          {/snippet}
+        </Field>
+        <Field label="Conta">
+          {#snippet control(field)}
+            <NativeSelect {...field} bind:value={filterAccount} class="w-48">
             <option value="">Todas</option>
             {#each data.accounts as account (account.id)}<option value={String(account.id)}>{account.name}</option>{/each}
           </NativeSelect>
-        </div>
+          {/snippet}
+        </Field>
       </div>
     </CardHeader>
     <CardContent class="px-0"><TransactionTable items={data.items} onDelete={remove} /></CardContent>

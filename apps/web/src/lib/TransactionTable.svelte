@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { TransactionListItem } from "@finance/database";
-  import { Badge, Money, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@finance/ui";
+  import { Badge, EmptyState, Money, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@finance/ui";
 
   let {
     items,
@@ -17,7 +17,7 @@
 </script>
 
 {#if items.length === 0}
-  <p class="px-5 py-6 text-sm text-muted-foreground">Nenhum lançamento neste período.</p>
+  <EmptyState title="Nenhum lançamento neste período." />
 {:else}
   <Table>
     <TableHeader>

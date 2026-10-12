@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Alert, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@finance/ui";
+  import { Alert, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader } from "@finance/ui";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { session } from "$lib/session.svelte";
 </script>
 
 <svelte:head><title>Importar e exportar · Finanças</title></svelte:head>
 
-<h1 class="mb-6 text-2xl font-semibold">Importar e exportar</h1>
+<PageHeader title="Importar e exportar" />
 
 <div class="grid gap-4">
   <OpenDatabasePanel />

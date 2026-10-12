@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    Card, CardContent, CardHeader, CardTitle, Input, Kpi, Label, Money,
+    Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Kpi, Link, Money, PageHeader,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   } from "@finance/ui";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
@@ -32,21 +32,22 @@
 
 <svelte:head><title>Dashboard · Finanças</title></svelte:head>
 
-<h1 class="mb-6 text-2xl font-semibold">Dashboard</h1>
+<PageHeader title="Dashboard" />
 
 {#if !view}
   <OpenDatabasePanel />
 {:else}
   <div class="mb-4 flex items-end gap-3">
-    <div class="grid gap-1.5">
-      <Label for="month">Mês</Label>
-      <Input id="month" type="month" value={view.month} onchange={(e) => (chosenMonth = e.currentTarget.value || null)} class="w-44" />
-    </div>
+    <Field label="Mês" class="w-44">
+      {#snippet control(field)}
+        <Input {...field} type="month" value={view.month} onchange={(e) => (chosenMonth = e.currentTarget.value || null)} />
+      {/snippet}
+    </Field>
   </div>
 
   {#if !view.hasAccounts}
     <Card class="mb-4">
-      <CardContent>Crie sua primeira conta em <a class="font-medium text-primary underline" href="/accounts">Contas</a> para começar a lançar.</CardContent>
+      <CardContent>Crie sua primeira conta em <Link href="/accounts">Contas</Link> para começar a lançar.</CardContent>
     </Card>
   {/if}
 
@@ -61,7 +62,7 @@
     <CardHeader><CardTitle>Despesas por categoria</CardTitle></CardHeader>
     <CardContent>
       {#if view.spending.length === 0}
-        <p class="text-sm text-muted-foreground">Sem despesas neste mês.</p>
+        <EmptyState title="Sem despesas neste mês." class="py-6" />
       {:else}
         <div class="grid grid-cols-1 items-center gap-4 md:grid-cols-2">
           <SpendingChart data={view.spending} />

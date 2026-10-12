@@ -2,7 +2,7 @@
   import type { AccountType } from "@finance/database";
   import { parseBRLToCents } from "@finance/core";
   import {
-    Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Money, NativeSelect,
+    Alert, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Money, NativeSelect, PageHeader,
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   } from "@finance/ui";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
@@ -51,7 +51,7 @@
 
 <svelte:head><title>Contas · Finanças</title></svelte:head>
 
-<h1 class="mb-6 text-2xl font-semibold">Contas</h1>
+<PageHeader title="Contas" />
 
 {#if !accounts}
   <OpenDatabasePanel />
@@ -60,22 +60,25 @@
     <CardHeader><CardTitle>Nova conta</CardTitle></CardHeader>
     <CardContent>
       <form class="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end" onsubmit={submit}>
-        <div class="grid gap-1.5">
-          <Label for="account-name">Nome</Label>
-          <Input id="account-name" bind:value={name} required placeholder="Ex.: Nubank" />
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="account-type">Tipo</Label>
-          <NativeSelect id="account-type" bind:value={type}>
-            {#each Object.entries(typeLabels) as [value, label] (value)}
-              <option {value}>{label}</option>
-            {/each}
-          </NativeSelect>
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="account-opening">{type === "credit_card" || type === "loan" ? "Valor devido hoje" : "Saldo inicial"}</Label>
-          <Input id="account-opening" bind:value={opening} inputmode="decimal" placeholder="0,00" />
-        </div>
+        <Field label="Nome">
+          {#snippet control(field)}
+            <Input {...field} bind:value={name} required placeholder="Ex.: Nubank" />
+          {/snippet}
+        </Field>
+        <Field label="Tipo">
+          {#snippet control(field)}
+            <NativeSelect {...field} bind:value={type}>
+              {#each Object.entries(typeLabels) as [value, label] (value)}
+                <option {value}>{label}</option>
+              {/each}
+            </NativeSelect>
+          {/snippet}
+        </Field>
+        <Field label={type === "credit_card" || type === "loan" ? "Valor devido hoje" : "Saldo inicial"}>
+          {#snippet control(field)}
+            <Input {...field} bind:value={opening} inputmode="decimal" placeholder="0,00" />
+          {/snippet}
+        </Field>
         <Button type="submit">Criar conta</Button>
       </form>
       {#if error}<Alert variant="destructive" role="alert" class="mt-3">{error}</Alert>{/if}
@@ -85,7 +88,7 @@
   <Card>
     <CardContent class="px-0">
       {#if accounts.length === 0}
-        <p class="px-5 py-6 text-sm text-muted-foreground">Nenhuma conta ainda.</p>
+        <EmptyState title="Nenhuma conta ainda." description="Crie a primeira conta no formulário acima." />
       {:else}
         <Table>
           <TableHeader>
