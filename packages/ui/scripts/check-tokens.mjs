@@ -20,8 +20,8 @@ const rules = [
   { name: "valor arbitrário de utilitário (crie um token)", re: /\b(?!(?:aria|data)-\[)[a-z][a-z0-9-]*-\[[^\]]*\]/ },
 ];
 
-// Só nas telas do app: controles que devem vir do design system. Viram erro quando a migração termina.
-const APP_RULES_FAIL = false;
+// Só nas telas do app: controles que devem vir do design system.
+const APP_RULES_FAIL = true;
 const appRules = [
   { name: "botão cru (use Button)", re: /<button\b/ },
   { name: "link estilizado à mão (use Link ou Button)", re: /<a\b[^>]*\bclass=/ },
