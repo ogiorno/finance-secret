@@ -10,9 +10,9 @@
     const inputElement = event.currentTarget;
     const file = inputElement.files?.[0];
     if (!file) return;
-    await session.openFile(file);
+    await session.stageFile(file);
     inputElement.value = "";
-    if (session.isOpen && !session.error) onOpened?.();
+    if (session.isOpen && !session.error && session.pendingImport === null) onOpened?.();
   }
 </script>
 

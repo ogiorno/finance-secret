@@ -197,6 +197,7 @@ test("income from the spouse: create a source, register the monthly income and r
   await page.getByRole("button", { name: "Nova conta" }).first().click();
   await page.getByLabel("Nome").fill("Conta da casa");
   await page.getByRole("button", { name: "Criar conta" }).click();
+  await page.getByRole("link", { name: "Configurações" }).click();
   await page.getByRole("button", { name: "Nova fonte" }).click();
   await page.getByRole("dialog").getByLabel("Nome").fill("Esposa");
   await page.getByRole("dialog").getByRole("button", { name: "Salvar" }).click();

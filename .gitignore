@@ -1,5 +1,7 @@
 node_modules/
 data/
+# Bancos de uso pessoal (dados reais) ficam em temp/, nunca no Git.
+temp/
 backups/
 .env
 .env.*

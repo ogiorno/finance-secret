@@ -15,7 +15,7 @@
     <CardHeader>
       <CardTitle>Exportar</CardTitle>
       <CardDescription>
-        As alterações ficam só na memória deste navegador. Exporte o arquivo para guardá-las; se fechar a página sem exportar, elas se perdem.
+        As alterações ficam guardadas neste navegador e sobrevivem a atualizar a página. Exporte o arquivo para ter uma cópia fora dele: limpar os dados do site apaga o que está aqui.
       </CardDescription>
     </CardHeader>
     <CardContent class="flex flex-col gap-3">

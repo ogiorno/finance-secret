@@ -1,5 +1,6 @@
 <script lang="ts">
   import "../app.css";
+  import { onMount } from "svelte";
   import { page } from "$app/state";
   import {
     ArrowLeftRight,
@@ -13,6 +14,7 @@
     Receipt,
     Repeat,
     Save,
+    Settings,
     Sparkles,
     Sun,
     TableProperties,
@@ -20,11 +22,16 @@
     Waypoints,
     Wallet,
   } from "@lucide/svelte";
-  import { Alert, AppShell, Button, IconButton, Menu, MonthStepper, Toaster, getStoredTheme, setTheme, type AppNavSection } from "@finance/ui";
+  import { Alert, AppShell, Button, IconButton, Menu, MonthStepper, NavLink, Toaster, type AppNavSection } from "@finance/ui";
+  import ImportCompareDialog from "$lib/ImportCompareDialog.svelte";
   import { period } from "$lib/period.svelte";
   import { session } from "$lib/session.svelte";
+  import { appTheme } from "$lib/theme.svelte";
 
   let { children } = $props();
+
+  // Reabre o banco guardado neste navegador, para atualizar a página não perder nada.
+  onMount(() => void session.restore());
 
   const sections = $derived<AppNavSection[]>([
     {
@@ -47,30 +54,23 @@
           label: "Importar e exportar",
           shortLabel: "Arquivo",
           icon: Save,
-          badge: session.dirty ? "alterações não exportadas" : undefined,
+          badge: session.dirty ? "só neste navegador" : undefined,
         },
         { href: "/editor", label: "Editor SQLite", icon: TableProperties, disabledHint: "Em breve" },
       ],
     },
   ]);
 
-  let theme = $state<"light" | "dark">("light");
-  $effect(() => {
-    theme = (document.documentElement.getAttribute("data-theme") as "light" | "dark" | null) ?? getStoredTheme() ?? "light";
-  });
-
-  function toggleTheme() {
-    theme = theme === "dark" ? "light" : "dark";
-    setTheme(theme);
-  }
+  onMount(() => appTheme.sync());
 
   let fileInput: HTMLInputElement;
 
   async function pick(event: Event & { currentTarget: HTMLInputElement }) {
-    const file = event.currentTarget.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    await session.openFile(file);
-    event.currentTarget.value = "";
+    await session.stageFile(file);
+    input.value = "";
   }
 
   const databaseItems = $derived([
@@ -84,12 +84,17 @@
 </script>
 
 <svelte:window
+  onpagehide={() => session.flush()}
   onbeforeunload={(event) => {
-    if (session.dirty) event.preventDefault();
+    // Só avisa quando o navegador não conseguiu guardar o banco: aí fechar ou atualizar perde as alterações.
+    if (session.dirty && session.persistFailed) event.preventDefault();
   }}
 />
 
 <AppShell brand="Finanças" {sections} pathname={page.url.pathname}>
+  {#snippet sidebarBottom()}
+    <NavLink href="/settings" label="Configurações" icon={Settings} active={page.url.pathname.startsWith("/settings")} />
+  {/snippet}
   {#snippet topbar()}
     <Menu heading="Banco de dados" items={databaseItems}>
       {#snippet trigger()}
@@ -101,19 +106,26 @@
     {#if session.dirty}
       <span class="flex items-center gap-1.5 text-xs text-warning">
         <DatabaseZap class="size-3.5" aria-hidden="true" />
-        Não exportado
+        {session.persistFailed ? "Não salvo" : "Só neste navegador"}
       </span>
     {/if}
     <div class="ml-auto flex items-center gap-2">
       {#if showPeriod}<MonthStepper bind:value={period.month} />{/if}
-      <IconButton icon={theme === "dark" ? Sun : Moon} label="Alternar tema claro e escuro" onclick={toggleTheme} />
+      <IconButton icon={appTheme.value === "dark" ? Sun : Moon} label="Alternar tema claro e escuro" onclick={() => appTheme.toggle()} />
+      <IconButton class="md:hidden" icon={Settings} label="Configurações" href="/settings" />
     </div>
   {/snippet}
   {#snippet banner()}
     {#if session.dirty}
       <Alert variant="warning" class="rounded-none border-x-0 border-t-0">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span>Há alterações que ainda não foram exportadas. Se você fechar a página, elas serão perdidas.</span>
+          <span>
+            {#if session.persistFailed}
+              O navegador não conseguiu guardar o banco. Se você fechar ou atualizar a página, as alterações serão perdidas: exporte um arquivo.
+            {:else}
+              Suas alterações ficam guardadas neste navegador e sobrevivem a atualizar a página, mas ainda não existe um arquivo. Exporte para ter uma cópia.
+            {/if}
+          </span>
           <Button size="sm" onclick={() => session.exportFile()}>Exportar agora</Button>
         </div>
       </Alert>
@@ -123,5 +135,7 @@
 </AppShell>
 
 <input bind:this={fileInput} type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3" class="hidden" onchange={pick} data-testid="file-input-menu" />
+
+<ImportCompareDialog />
 
 <Toaster />

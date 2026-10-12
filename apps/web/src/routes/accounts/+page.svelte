@@ -21,9 +21,8 @@
     PageHeader,
     toast,
   } from "@finance/ui";
-  import AccountTypesCard from "$lib/AccountTypesCard.svelte";
-  import IncomeSourcesCard from "$lib/IncomeSourcesCard.svelte";
   import { accountTypeStyle } from "$lib/category-style";
+  import { todayLocal } from "$lib/local-date";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { session } from "$lib/session.svelte";
 
@@ -42,6 +41,7 @@
         balance: repo.getBalance(account.id),
         typeName: type?.name ?? account.type,
         isLiability: type?.isLiability ?? false,
+        invoice: type?.hasClosingDay ? repo.getCardInvoice(account.id, todayLocal()) : null,
       };
     });
     return { types, typeByKey, accounts, archivedCount: repo.listAccounts({ includeArchived: true }).length - repo.listAccounts().length };
@@ -51,20 +51,24 @@
   let name = $state("");
   let type = $state("checking");
   let opening = $state("");
+  let closingDay = $state("1");
   let error = $state<string | null>(null);
 
   let renaming = $state<Account | null>(null);
   let renameOpen = $state(false);
   let renameValue = $state("");
+  let renameClosingDay = $state("1");
   let deleting = $state<Account | null>(null);
   let confirmOpen = $state(false);
 
   const creatingLiability = $derived(data?.typeByKey.get(type)?.isLiability ?? false);
+  const creatingCard = $derived(data?.typeByKey.get(type)?.hasClosingDay ?? false);
 
   function openCreate() {
     name = "";
     type = "checking";
     opening = "";
+    closingDay = "1";
     error = null;
     createOpen = true;
   }
@@ -81,7 +85,9 @@
     // Dívidas (cartão, empréstimo) começam devendo: o valor informado vira negativo.
     const signed = creatingLiability ? -cents : opening.trim().startsWith("-") ? -cents : cents;
     try {
-      session.change((repo) => repo.createAccount({ name: name.trim(), type, openingBalanceCents: signed }));
+      session.change((repo) =>
+        repo.createAccount({ name: name.trim(), type, openingBalanceCents: signed, closingDay: creatingCard ? Number(closingDay) : undefined }),
+      );
       createOpen = false;
       toast.show({ message: "Conta criada", tone: "success" });
     } catch (e) {
@@ -92,6 +98,7 @@
   function startRename(account: Account) {
     renaming = account;
     renameValue = account.name;
+    renameClosingDay = String(account.closingDay ?? 1);
     renameOpen = true;
   }
 
@@ -100,7 +107,10 @@
     if (!renaming) return;
     const target = renaming;
     try {
-      session.change((repo) => repo.renameAccount(target.id, renameValue));
+      session.change((repo) => {
+        repo.renameAccount(target.id, renameValue);
+        if (target.closingDay !== null && Number(renameClosingDay) !== target.closingDay) repo.setAccountClosingDay(target.id, Number(renameClosingDay));
+      });
       renameOpen = false;
     } catch (e) {
       toast.show({ message: e instanceof Error ? e.message : "Não foi possível renomear.", tone: "destructive", duration: 0 });
@@ -172,7 +182,7 @@
                 <div class="text-xs text-muted-foreground">{account.typeName}{account.isActive ? "" : " · arquivada"}</div>
               </div>
               <div class="flex gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
-                <IconButton icon={Pencil} label={`Renomear ${account.name}`} onclick={() => startRename(account)} />
+                <IconButton icon={Pencil} label={`Editar ${account.name}`} onclick={() => startRename(account)} />
                 {#if account.isActive}
                   <IconButton icon={Archive} label={`Arquivar ${account.name}`} onclick={() => archive(account)} />
                 {:else}
@@ -182,15 +192,27 @@
               </div>
             </div>
             <Money class="text-2xl font-semibold" cents={account.balance} tone="auto" />
+            {#if account.invoice}
+              {@const invoice = account.invoice}
+              <dl class="grid gap-1 border-t pt-3 text-sm">
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-muted-foreground">Fatura em aberto</dt>
+                  <dd><Money class="font-medium" cents={invoice.openInvoiceCents} /></dd>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-muted-foreground">Fatura anterior</dt>
+                  <dd><Money class="font-medium" cents={invoice.previousInvoiceCents} /></dd>
+                </div>
+                <p class="text-xs text-muted-foreground">
+                  Vira dia {invoice.closingDay}{invoice.daysUntilTurn === 0 ? " (hoje)" : ` (em ${invoice.daysUntilTurn} ${invoice.daysUntilTurn === 1 ? "dia" : "dias"})`}
+                </p>
+              </dl>
+            {/if}
           </CardContent>
         </Card>
       {/each}
     </div>
   {/if}
-
-  <IncomeSourcesCard />
-
-  <AccountTypesCard />
 
   <Dialog bind:open={createOpen} title="Nova conta">
     <form class="grid gap-4" onsubmit={create}>
@@ -207,6 +229,11 @@
       <Field label={creatingLiability ? "Valor devido hoje" : "Saldo inicial"}>
         {#snippet control(field)}<Input {...field} bind:value={opening} inputmode="decimal" placeholder="0,00" />{/snippet}
       </Field>
+      {#if creatingCard}
+        <Field label="A fatura vira no dia">
+          {#snippet control(field)}<Input {...field} bind:value={closingDay} type="number" min="1" max="31" inputmode="numeric" required />{/snippet}
+        </Field>
+      {/if}
       {#if error}<Alert variant="destructive" role="alert">{error}</Alert>{/if}
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" onclick={() => (createOpen = false)}>Cancelar</Button>
@@ -215,11 +242,16 @@
     </form>
   </Dialog>
 
-  <Dialog bind:open={renameOpen} title="Renomear conta">
+  <Dialog bind:open={renameOpen} title="Editar conta">
     <form class="grid gap-4" onsubmit={rename}>
       <Field label="Nome">
         {#snippet control(field)}<Input {...field} bind:value={renameValue} required />{/snippet}
       </Field>
+      {#if renaming?.closingDay !== null && renaming?.closingDay !== undefined}
+        <Field label="A fatura vira no dia">
+          {#snippet control(field)}<Input {...field} bind:value={renameClosingDay} type="number" min="1" max="31" inputmode="numeric" required />{/snippet}
+        </Field>
+      {/if}
       <div class="flex justify-end gap-2">
         <Button type="button" variant="ghost" onclick={() => (renameOpen = false)}>Cancelar</Button>
         <Button type="submit">Salvar</Button>

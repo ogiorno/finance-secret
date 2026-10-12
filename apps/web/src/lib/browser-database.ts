@@ -11,13 +11,15 @@ export interface BrowserDatabase {
   repo: FinanceRepository;
   /** Cópia serializada do banco em memória, pronta para baixar como .db. */
   exportBytes(): Uint8Array;
+  /** Libera o banco em memória; use em um banco aberto só para olhar. */
+  close(): void;
 }
 
 function wrap(SQL: SqlJsStatic, bytes?: Uint8Array): BrowserDatabase {
   const raw = bytes ? new SQL.Database(bytes) : new SQL.Database();
   try {
     const repo = createFinanceRepository(openDatabase(sqljsDriver(raw)));
-    return { repo, exportBytes: () => raw.export() };
+    return { repo, exportBytes: () => raw.export(), close: () => raw.close() };
   } catch (error) {
     raw.close();
     throw error;
