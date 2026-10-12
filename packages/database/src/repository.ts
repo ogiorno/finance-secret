@@ -44,6 +44,8 @@ export interface AccountTypeUsage {
   creditedCents: number;
   /** Despesas posted do mês nessas contas. */
   usedCents: number;
+  /** Quantas contas ativas o tipo tem; zero quando ninguém usa o tipo ainda. */
+  accountCount: number;
 }
 
 export interface Category {
@@ -415,7 +417,7 @@ class SqlFinanceRepository implements FinanceRepository {
   getAccountTypeUsage(month: string): AccountTypeUsage[] {
     assertMonth(month);
     return this.db.all<AccountTypeUsage>(
-      `SELECT ty.key AS typeKey, ty.name AS typeName,
+      `SELECT ty.key AS typeKey, ty.name AS typeName, COUNT(a.id) AS accountCount,
               COALESCE(SUM(a.opening_balance_cents), 0)
                 + COALESCE((SELECT SUM(CASE t.type WHEN 'expense' THEN -t.amount_cents ELSE t.amount_cents END)
                               FROM transactions t JOIN accounts x ON x.id = t.account_id

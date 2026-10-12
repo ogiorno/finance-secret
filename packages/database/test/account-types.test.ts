@@ -78,7 +78,7 @@ describe.each(drivers)("account types ($name)", ({ create }) => {
       repo.addTransaction({ accountId: checking.id, categoryId: market.id, type: "expense", amountCents: 9999, date: "2026-03-11" });
 
       expect(repo.getAccountTypeUsage("2026-03")).toEqual([
-        { typeKey: "meal_voucher", typeName: "Vale-alimentação", balanceCents: 10000 + 90000 - 25000 - 4000, creditedCents: 90000, usedCents: 25000 },
+        { typeKey: "meal_voucher", typeName: "Vale-alimentação", balanceCents: 10000 + 90000 - 25000 - 4000, creditedCents: 90000, usedCents: 25000, accountCount: 1 },
       ]);
     });
 
@@ -92,12 +92,12 @@ describe.each(drivers)("account types ($name)", ({ create }) => {
       }
       repo.setAccountActive(old.id, false);
 
-      expect(repo.getAccountTypeUsage("2026-03")[0]).toMatchObject({ balanceCents: 20000, creditedCents: 20000, usedCents: 0 });
+      expect(repo.getAccountTypeUsage("2026-03")[0]).toMatchObject({ balanceCents: 20000, creditedCents: 20000, usedCents: 0, accountCount: 2 });
     });
 
     it("lists a tracked type even when it has no accounts yet", () => {
       expect(repo.getAccountTypeUsage("2026-03")).toEqual([
-        { typeKey: "meal_voucher", typeName: "Vale-alimentação", balanceCents: 0, creditedCents: 0, usedCents: 0 },
+        { typeKey: "meal_voucher", typeName: "Vale-alimentação", balanceCents: 0, creditedCents: 0, usedCents: 0, accountCount: 0 },
       ]);
     });
 
