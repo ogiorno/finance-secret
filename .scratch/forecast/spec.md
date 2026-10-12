@@ -1,4 +1,4 @@
-Status: needs-grilling
+Status: partially-done (primeira versão: tela Projeções, ver docs/spec-decisions.md)
 
 # Previsão (dívidas fixas e cartão)
 

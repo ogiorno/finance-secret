@@ -4,6 +4,8 @@ import {
   dueDateFor,
   expectedAmountFor,
   averageMonthlyCents,
+  averageSpendCents,
+  buildProjection,
   currentCycle,
   daysUntil,
   estimateCompletionPeriod,
@@ -13,12 +15,16 @@ import {
   monthlyContributionNeeded,
   previousCycle,
   progressPercent,
+  remainingMonthShare,
+  shiftPeriod,
   validateTransaction,
   type BillAmountStep,
   type BillFrequency,
   type BillStatus,
   type CategoryType,
   type PaymentMethod,
+  type Projection,
+  type ProjectionMonthInput,
 } from "@finance/core";
 import type { Driver, SqlValue } from "./driver";
 import type { FinanceDatabase } from "./open";
@@ -173,6 +179,28 @@ export interface MonthRollForward {
   cardsCents: number;
   /** Quanto do movimento do saldo as receitas e despesas não explicam (ex.: transferência com conta arquivada). */
   unexplainedCents: number;
+}
+
+export interface CashProjection extends Projection {
+  /** Dinheiro nas contas hoje, de onde a projeção parte. */
+  startCashCents: number;
+  /** Média mensal dos gastos do dia a dia (fora do cartão e das contas fixas) nos últimos meses com histórico. */
+  variableAverageCents: number;
+  /** Quantos meses entraram nessa média; zero quando ainda não há histórico. */
+  variableMonthsUsed: number;
+  /** Receita do último mês que teve alguma: é a que se supõe repetir nos meses sem receita recorrente cadastrada. Zero se nunca houve. */
+  lastIncomeCents: number;
+  /** Mês `YYYY-MM` de `lastIncomeCents`; `null` se nunca houve receita. */
+  lastIncomeMonth: string | null;
+  /** Mês `YYYY-MM` da primeira fatura que ainda aceita compras (a que fecha primeiro); `null` sem cartão ativo. */
+  firstOpenInvoiceMonth: string | null;
+}
+
+export interface DailyTotals {
+  /** Dia do mês, a partir de 1. */
+  day: number;
+  incomeCents: number;
+  expenseCents: number;
 }
 
 export interface CategorySpend {
@@ -719,6 +747,17 @@ export interface FinanceRepository {
   getMonthExtras(month: string): number;
   /** Saldo no início, receitas, despesas e saldo no fim do mês `YYYY-MM`, mostrando o que não fecha. */
   getMonthRollForward(month: string): MonthRollForward;
+  /**
+   * Receitas e despesas `posted` de contas ativas que contam no mês, dia a dia (só os dias com movimento). Compra no cartão
+   * conta no dia em que a fatura fecha, no mês dela, para o gráfico fechar com os totais do mês.
+   */
+  getMonthDailyTotals(month: string): DailyTotals[];
+  /**
+   * Caixa projetado do mês de `today` e dos `monthsAhead` seguintes: o saldo de hoje mais as receitas e menos as contas
+   * fixas que faltam, a fatura do cartão que fecha em cada mês e uma estimativa dos gastos do dia a dia. Não gera
+   * lançamentos nem mexe em saldos.
+   */
+  getCashProjection(today: string, monthsAhead?: number): CashProjection;
   /** Despesas `posted` de contas ativas no mês, agrupadas pela categoria de nível superior, maiores primeiro. */
   getExpensesByCategory(month: string): CategorySpend[];
   /** Lançamentos mais recentes primeiro (data, depois id). */
@@ -2205,6 +2244,115 @@ class SqlFinanceRepository implements FinanceRepository {
               FROM transactions t JOIN accounts a ON a.id = t.account_id
              WHERE a.is_active = 1 AND t.status = 'posted' ${kind} ${extraWhere}) AS total`,
       params,
+    );
+    return row?.total ?? 0;
+  }
+
+  getMonthDailyTotals(month: string): DailyTotals[] {
+    assertMonth(month);
+    return this.db
+      .all<{ day: number; income: number; expense: number }>(
+        `SELECT CASE WHEN a.closing_day IS NULL THEN CAST(substr(t.transaction_date, 9, 2) AS INTEGER)
+                     ELSE MIN(a.closing_day, CAST(strftime('%d', date(? || '-01', '+1 month', '-1 day')) AS INTEGER)) END AS day,
+                COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_cents END), 0) AS income,
+                COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_cents END), 0) AS expense
+           FROM transactions t JOIN accounts a ON a.id = t.account_id
+          WHERE a.is_active = 1 AND t.status = 'posted' AND t.type IN ('income', 'expense') AND ${COMPETENCE_MONTH} = ?
+          GROUP BY day
+          ORDER BY day`,
+        [month, month],
+      )
+      .map((row) => ({ day: row.day, incomeCents: row.income, expenseCents: row.expense }));
+  }
+
+  getCashProjection(today: string, monthsAhead = 3): CashProjection {
+    if (!isValidDate(today)) throw new Error("Data inválida: use o formato AAAA-MM-DD.");
+    if (!Number.isInteger(monthsAhead) || monthsAhead < 0 || monthsAhead > 24) throw new Error("O horizonte deve ser de 0 a 24 meses.");
+    const current = today.slice(0, 7);
+
+    const history = Array.from({ length: 3 }, (_, index) => shiftPeriod(current, -(index + 1)));
+    const spent = history.map((month) => this.dayToDaySpending(month));
+    const variableAverageCents = averageSpendCents(spent);
+    const share = remainingMonthShare(today);
+
+    // Sem receitas recorrentes nos meses que vêm, supõe-se a mesma receita do último mês que teve alguma.
+    let lastIncomeCents = 0;
+    let lastIncomeMonth: string | null = null;
+    for (let back = 0; back <= 3 && lastIncomeMonth === null; back++) {
+      const month = shiftPeriod(current, -back);
+      const income = this.getMonthSummary(month).incomeCents;
+      if (income > 0) {
+        lastIncomeCents = income;
+        lastIncomeMonth = month;
+      }
+    }
+
+    const inputs: ProjectionMonthInput[] = [];
+    for (let offset = 0; offset <= monthsAhead; offset++) {
+      const month = shiftPeriod(current, offset);
+      const registered = this.getIncomeExpectations(month, today).remainingCents;
+      const assumed = offset > 0 && registered === 0 && lastIncomeCents > 0;
+      inputs.push({
+        month,
+        incomeCents: assumed ? lastIncomeCents : registered,
+        incomeAssumed: assumed,
+        billsCents: this.getBillsSummary(month, today).remainingCents,
+        cardInvoiceCents: this.cardInvoiceOfMonth(month),
+        cardPaidCents: this.cardPaidInMonth(month),
+        variableCents:
+          offset === 0 ? Math.round((variableAverageCents * share.days) / share.of) : variableAverageCents,
+      });
+    }
+
+    const startCashCents = this.getBalanceBreakdown().cashCents;
+    const turns = this.listAccounts()
+      .filter((account) => account.closingDay !== null)
+      .map((account) => this.getCardInvoice(account.id, today).nextTurn)
+      .sort();
+    return {
+      ...buildProjection(startCashCents, inputs),
+      lastIncomeCents,
+      lastIncomeMonth,
+      firstOpenInvoiceMonth: turns[0]?.slice(0, 7) ?? null,
+      startCashCents,
+      variableAverageCents,
+      variableMonthsUsed: spent.filter((total) => total > 0).length,
+    };
+  }
+
+  /** Gastos de contas que não são cartão, fora das contas fixas, que contam no mês. */
+  private dayToDaySpending(month: string): number {
+    const [row] = this.db.all<{ total: number }>(
+      `SELECT COALESCE(SUM(t.amount_cents), 0) AS total
+         FROM transactions t JOIN accounts a ON a.id = t.account_id
+         LEFT JOIN bill_payments bp ON bp.transaction_id = t.id
+        WHERE a.is_active = 1 AND a.closing_day IS NULL AND t.status = 'posted' AND t.type = 'expense'
+          AND bp.transaction_id IS NULL AND substr(t.transaction_date, 1, 7) = ?`,
+      [month],
+    );
+    return row?.total ?? 0;
+  }
+
+  /** O que entra na fatura de cartão que fecha em `month`: despesas menos estornos, pelo mês da fatura. */
+  private cardInvoiceOfMonth(month: string): number {
+    const [row] = this.db.all<{ total: number }>(
+      `SELECT COALESCE(SUM(CASE t.type WHEN 'expense' THEN t.amount_cents ELSE -t.amount_cents END), 0) AS total
+         FROM transactions t JOIN accounts a ON a.id = t.account_id
+        WHERE a.is_active = 1 AND a.closing_day IS NOT NULL AND t.status = 'posted' AND t.type IN ('income', 'expense')
+          AND ${COMPETENCE_MONTH} = ?`,
+      [month],
+    );
+    return Math.max(0, row?.total ?? 0);
+  }
+
+  /** Transferências para cartões e empréstimos no mês (pagamento de fatura), pela data. */
+  private cardPaidInMonth(month: string): number {
+    const [row] = this.db.all<{ total: number }>(
+      `SELECT COALESCE(SUM(t.amount_cents), 0) AS total
+         FROM transactions t JOIN accounts a ON a.id = t.account_id
+        WHERE a.is_active = 1 AND a.closing_day IS NOT NULL AND t.status = 'posted' AND t.type = 'transfer'
+          AND t.amount_cents > 0 AND substr(t.transaction_date, 1, 7) = ?`,
+      [month],
     );
     return row?.total ?? 0;
   }

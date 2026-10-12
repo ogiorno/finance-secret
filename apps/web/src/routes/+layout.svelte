@@ -11,7 +11,6 @@
     FolderOpen,
     LayoutDashboard,
     Moon,
-    Receipt,
     Repeat,
     Save,
     Settings,
@@ -19,6 +18,7 @@
     Sun,
     TableProperties,
     Target,
+    TrendingUp,
     Waypoints,
     Wallet,
   } from "@lucide/svelte";
@@ -43,7 +43,7 @@
         { href: "/bills", label: "A pagar e receber", shortLabel: "Fixas", icon: Repeat },
         { href: "/goals", label: "Metas", icon: Target },
         { href: "/flow", label: "Fluxo do dinheiro", shortLabel: "Fluxo", icon: Waypoints },
-        { href: "/receipts", label: "Cupons", icon: Receipt, disabledHint: "Em breve" },
+        { href: "/projections", label: "Projeções", shortLabel: "Projeção", icon: TrendingUp },
       ],
     },
     {

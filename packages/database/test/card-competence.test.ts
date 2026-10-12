@@ -70,4 +70,20 @@ describe.each(drivers)("A card purchase counts in the month its invoice closes (
     expect(repo.listTransactions({ month: "2026-10" })).toHaveLength(1);
     expect(repo.listTransactions({ month: "2026-11" })).toHaveLength(0);
   });
+
+  it("gives the daily totals of a month, with the card on the day its invoice closes", () => {
+    const { checking, card, buy } = setup(15);
+    buy(checking.id, 4000, "2026-10-03");
+    buy(card.id, 1000, "2026-09-20"); // fecha em 15/10
+    buy(card.id, 2000, "2026-10-10"); // fecha em 15/10
+    buy(card.id, 9000, "2026-10-20"); // fecha em 15/11
+
+    const totals = repo.getMonthDailyTotals("2026-10");
+
+    expect(totals).toEqual([
+      { day: 3, incomeCents: 0, expenseCents: 4000 },
+      { day: 15, incomeCents: 0, expenseCents: 3000 },
+    ]);
+    expect(totals.reduce((sum, row) => sum + row.expenseCents, 0)).toBe(repo.getMonthSummary("2026-10").expenseCents);
+  });
 });

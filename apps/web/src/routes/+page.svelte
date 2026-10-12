@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowDownRight, ArrowUpRight, Scale, Utensils, Wallet } from "@lucide/svelte";
+  import { ArrowDownRight, ArrowUpRight, CreditCard, Scale, Utensils, Wallet } from "@lucide/svelte";
   import {
     Badge,
     Button,
@@ -25,6 +25,7 @@
     toneForName,
     TrendBadge,
   } from "@finance/ui";
+  import type { CashProjection } from "@finance/database";
   import CashFlowChart from "$lib/CashFlowChart.svelte";
   import RollForwardDialog from "$lib/RollForwardDialog.svelte";
   import { BAR_CLASS, categoryStyle } from "$lib/category-style";
@@ -43,6 +44,15 @@
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     });
   }
+
+  /** A primeira fatura que ainda aceita compras: o que cabe nela, o teto e o que já está lá. */
+  function cardInvoiceToWatch(projection: CashProjection) {
+    const first = projection.firstOpenInvoiceMonth;
+    return first === null ? null : (projection.months.find((month) => month.month === first) ?? null);
+  }
+
+  const monthTitle = (month: string) =>
+    new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
 
   function change(current: number, previous: number): number | null {
     return previous > 0 ? ((current - previous) / previous) * 100 : null;
@@ -72,10 +82,12 @@
 
     // O mês começa zerado no dia 1 e acumula; depois de hoje (mês corrente) a linha termina.
     const perDay = Array.from({ length: daysInMonth }, () => ({ income: 0, expense: 0 }));
-    for (const item of items) {
-      if (item.status !== "posted" || item.type === "transfer") continue;
-      const day = perDay[Number(item.date.slice(8, 10)) - 1];
-      if (day) day[item.type] += item.amountCents;
+    for (const total of repo.getMonthDailyTotals(month)) {
+      const day = perDay[total.day - 1];
+      if (day) {
+        day.income += total.incomeCents;
+        day.expense += total.expenseCents;
+      }
     }
     let income = 0;
     let expense = 0;
@@ -94,6 +106,8 @@
       roll: repo.getMonthRollForward(month),
       extras: repo.getMonthExtras(month),
       toReceive: repo.getIncomeExpectations(month, todayLocal()).remainingCents,
+      toPay: repo.getBillsSummary(month, todayLocal()).remainingCents,
+      cardInvoice: cardInvoiceToWatch(repo.getCashProjection(todayLocal(), 3)),
       reserved: repo.getReservedSummary(),
       hasGoals: repo.listGoals().length > 0,
       incomeMonths: lastMonths(month, 6),
@@ -143,9 +157,20 @@
       >
         <CountUp cents={view.balance} tone="auto" />
         {#snippet hint()}
-          {#if view.breakdown.debtCents !== 0}
-            A pagar nos cartões <Money cents={view.breakdown.debtCents} tone="expense" /> (fora deste saldo)
-          {/if}
+          <span class="grid gap-0.5">
+            {#if view.breakdown.debtCents !== 0}
+              <span>A pagar nos cartões <Money cents={view.breakdown.debtCents} tone="expense" /> (fora deste saldo)</span>
+            {/if}
+            {#if view.toPay !== 0 || view.toReceive !== 0}
+              <span class="flex items-center gap-1">
+                Previsto no fim do mês: <Money cents={view.balance + view.toReceive - view.toPay} tone="auto" />
+                <InfoTip
+                  text="O saldo de hoje, mais o que ainda falta receber, menos as contas fixas que ainda faltam pagar neste mês. Não inclui a fatura do cartão."
+                  label="Sobre o saldo previsto"
+                />
+              </span>
+            {/if}
+          </span>
         {/snippet}
       </Kpi>
     </div>
@@ -179,12 +204,21 @@
         <CountUp cents={view.summary.expenseCents} tone="expense" />
         {#snippet trend()}{#if view.expenseTrend !== null}<TrendBadge percent={view.expenseTrend} goodWhen="down" />{/if}{/snippet}
         {#snippet hint()}
-          <span class="flex items-center gap-1">
-            Extras do mês: <Money cents={view.extras} tone="expense" />
-            <InfoTip
-              text="Imprevistos do mês: despesas que você marcou como extras. Já estão somadas nas despesas, na sua categoria de sempre."
-              label="Sobre extras do mês"
-            />
+          <span class="grid gap-0.5">
+            <span class="flex items-center gap-1">
+              A pagar: <Money cents={view.toPay} tone="expense" />
+              <InfoTip
+                text="Contas fixas deste mês que ainda não foram pagas (pendentes e atrasadas). Só entram nas despesas quando você marca como pagas."
+                label="Sobre o que falta pagar"
+              />
+            </span>
+            <span class="flex items-center gap-1">
+              Extras do mês: <Money cents={view.extras} tone="expense" />
+              <InfoTip
+                text="Imprevistos do mês: despesas que você marcou como extras. Já estão somadas nas despesas, na sua categoria de sempre."
+                label="Sobre extras do mês"
+              />
+            </span>
           </span>
         {/snippet}
       </Kpi>
@@ -202,8 +236,19 @@
           {:else if view.summary.resultCents < 0}<Badge variant="expense">Faltou</Badge>{/if}
         {/snippet}
         {#snippet hint()}
-          Receitas − Despesas ·
-          <Button variant="link" size="sm" class="h-auto p-0 text-xs" onclick={() => (rollOpen = true)}>Como chegamos neste saldo</Button>
+          <span class="grid gap-0.5">
+            <span class="flex items-center gap-1">
+              Previsto no mês: <Money cents={view.summary.resultCents + view.toReceive - view.toPay} tone="auto" showSign />
+              <InfoTip
+                text="O resultado de hoje, mais o que ainda falta receber, menos as contas fixas que ainda faltam pagar. Compras do cartão contam no mês da fatura, então não entram aqui."
+                label="Sobre o resultado previsto"
+              />
+            </span>
+            <span>
+              Receitas − Despesas ·
+              <Button variant="link" size="sm" class="h-auto p-0 text-xs" onclick={() => (rollOpen = true)}>Como chegamos neste saldo</Button>
+            </span>
+          </span>
         {/snippet}
       </Kpi>
     </div>
@@ -219,6 +264,34 @@
     </Card>
 
     <div class="grid content-start gap-4">
+      {#if view.cardInvoice}
+        {@const invoice = view.cardInvoice}
+        <Card class="animate-rise" style="animation-delay: 270ms">
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <IconChip icon={CreditCard} tone="transfer" size="sm" />Posso gastar no cartão
+              <InfoTip
+                text="O quanto ainda cabe na próxima fatura sem o mês em que você a paga ficar no vermelho. O teto é o que o mês gera: a receita (a cadastrada ou, sem ela, a mesma do último mês) menos todas as contas fixas e os gastos do dia a dia estimados; o que já está na fatura sai dele. Com o mesmo salário, o teto é igual todo mês."
+                label="Sobre quanto posso gastar no cartão"
+              />
+            </CardTitle>
+          </CardHeader>
+          <CardContent class="grid gap-2">
+            <div class="text-2xl font-semibold tabular-nums"><CountUp cents={invoice.cardRoomCents} tone="auto" /></div>
+            <Progress value={invoice.cardInvoiceCents} max={Math.max(invoice.cardAllowanceCents, 1)} aria-label="Quanto do teto já está na fatura" />
+            <div class="flex justify-between text-xs text-muted-foreground">
+              <span>Já na fatura <Money cents={invoice.cardInvoiceCents} /></span>
+              <span>Teto <Money cents={invoice.cardAllowanceCents} /></span>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              Fatura de {monthTitle(invoice.month)}, paga em {monthTitle(invoice.month)}.
+              {#if invoice.incomeAssumed}Supondo a mesma receita do último mês e todas as contas fixas pagas.{/if}
+              <Link href="/projections">Ver projeções</Link>
+            </p>
+          </CardContent>
+        </Card>
+      {/if}
+
       {#each view.usage.filter((entry) => entry.accountCount > 0) as row (row.typeKey)}
         {@const used = row.creditedCents > 0 ? Math.min(100, (row.usedCents / row.creditedCents) * 100) : 0}
         <Card class="animate-rise" style="animation-delay: 300ms">

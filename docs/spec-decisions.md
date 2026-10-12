@@ -53,3 +53,13 @@ Resultado da sessão de grilling. Onde este arquivo e o spec original divergirem
 - **Fase 3.6, Desktop mode** (só plano): Electron empacota o mesmo servidor e frontend e abre um `.db` escolhido. Sem senha (vale para todos os modos), com token aleatório por abertura. Journal `DELETE` (sem `-wal`/`-shm`) e arquivo de trava com aviso, para pastas sincronizadas por drive. Configuração e chave na pasta de dados do aplicativo.
 - **Vários bancos (Connected mode)**: uma pasta de bancos `.db`, normalmente dois ou três. Um banco ativo por sessão, trocado por um seletor na barra superior; sem totais nem transferências entre bancos. Criar, renomear, trocar, baixar e excluir (digitando o nome). O Assistant só enxerga o ativo; o backup copia todos. O Desktop mode abre um arquivo de cada vez, escolhido pelo usuário.
 - **Fora da primeira versão (V2)**: sincronização e uso em vários dispositivos, Tailscale (antiga Fase 4), senha de acesso em qualquer modo (a do Connected mode da antiga Fase 3 e a do Desktop mode), senha/criptografia do próprio SQLite (ex.: SQLCipher), empréstimos e investimentos com cotação.
+
+## Projeções (2026-10-12)
+
+- Tela própria "Projeções", no lugar de "Cupons" no menu (o cupom/QR continua previsto para a página de lançamentos). Horizonte: o mês atual e os 3 seguintes.
+- O caixa projetado parte do dinheiro de hoje nas contas que não são dívida, no formato de roll-forward: início + receitas a receber − contas fixas a pagar − gastos do dia a dia estimados − fatura do cartão a pagar = fim; o fim de um mês é o início do seguinte, e a tela mostra a conferência.
+- Fatura do cartão a pagar no mês = compras do ciclo anterior (mês da fatura) menos o já pago por transferência no mês. Compra nova cai na fatura do mês seguinte (regra do dia de virada).
+- Gastos do dia a dia = média dos últimos 3 meses com histórico dos gastos fora do cartão e das contas fixas; no mês atual, só a fração dos dias que faltam. Sem histórico, zero, e a tela avisa que a projeção tende a ser otimista.
+- "Quanto ainda posso gastar no cartão" por fatura = teto menos o que já está na fatura. O teto é o que o mês da fatura gera (receita − todas as contas fixas − gastos do dia a dia estimados): com o mesmo salário é igual todo mês, e o dinheiro que sobra de um mês não o aumenta. Um buraco que vem do mês anterior o diminui. Só a primeira fatura, quando fecha no mês atual, parte do caixa de hoje.
+- Sem receitas recorrentes cadastradas nos meses que vêm, supõe-se a mesma receita do último mês que teve receita.
+- Alerta quando algum mês termina negativo. Fica de fora: parcelas, limite do cartão, data de vencimento da fatura, metas e receitas/gastos não cadastrados.
