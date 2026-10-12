@@ -10,6 +10,8 @@ export interface Account {
   name: string;
   type: AccountType;
   openingBalanceCents: number;
+  /** Falso quando a conta foi arquivada (Archived): fica fora de novos lançamentos e do saldo total. */
+  isActive: boolean;
 }
 
 export interface Category {
@@ -106,7 +108,16 @@ export interface TransactionFilter {
   /** `YYYY-MM`. */
   month?: string;
   accountId?: number;
+  /** Categoria escolhida; uma categoria-pai inclui as subcategorias. */
+  categoryId?: number;
+  /** Texto contido na descrição ou no nome da categoria (sem diferenciar maiúsculas de ASCII). */
+  search?: string;
   limit?: number;
+}
+
+export interface ListAccountsOptions {
+  /** Inclui as contas arquivadas (Archived). */
+  includeArchived?: boolean;
 }
 
 export const DEFAULT_CATEGORIES: { name: string; type: CategoryType; children?: string[] }[] = [
@@ -128,12 +139,24 @@ export interface FinanceRepository {
   createCategory(input: NewCategory): Category;
   addTransaction(input: NewIncomeOrExpense): Transaction;
   addTransfer(input: NewTransfer): Transfer;
+  /** Um lançamento (ou perna de transferência) como aparece nas listas. */
+  getTransaction(id: number): TransactionListItem;
+  /**
+   * Troca todos os dados do lançamento. Receita e despesa recebem `NewIncomeOrExpense`; uma perna de
+   * transferência recebe `NewTransfer` e atualiza as duas pernas juntas. Não converte entre os dois tipos.
+   */
+  updateTransaction(id: number, input: NewIncomeOrExpense | NewTransfer): void;
   /** Remove o lançamento; para transferência, remove as duas pernas. */
   deleteTransaction(id: number): void;
+  renameAccount(id: number, name: string): void;
+  /** Arquiva (`false`) ou reativa (`true`) a conta, sem apagar o histórico. */
+  setAccountActive(id: number, active: boolean): void;
+  /** Só apaga conta que nunca teve lançamento; use `setAccountActive` nas demais. */
+  deleteAccount(id: number): void;
   /** Receitas e despesas `posted` de um mês `YYYY-MM`; transferências nunca entram. */
   getMonthSummary(month: string): MonthSummary;
-  /** Contas ativas, na ordem de criação. */
-  listAccounts(): Account[];
+  /** Contas ativas (e as arquivadas, se pedido), na ordem de criação. */
+  listAccounts(options?: ListAccountsOptions): Account[];
   /** Categorias ativas. */
   listCategories(): Category[];
   /** Cria as categorias padrão em PT-BR, só se ainda não houver nenhuma. */
@@ -161,7 +184,7 @@ class SqlFinanceRepository implements FinanceRepository {
       "INSERT INTO accounts (name, type, opening_balance_cents, created_at) VALUES (?, ?, ?, ?)",
       [input.name, input.type, openingBalanceCents, new Date().toISOString()],
     );
-    return { id: lastInsertRowid, name: input.name, type: input.type, openingBalanceCents };
+    return { id: lastInsertRowid, name: input.name, type: input.type, openingBalanceCents, isActive: true };
   }
 
   createCategory(input: NewCategory): Category {
@@ -187,7 +210,7 @@ class SqlFinanceRepository implements FinanceRepository {
     const category = this.db.all<{ type: CategoryType }>("SELECT type FROM categories WHERE id = ?", [input.categoryId])[0];
     if (!category) throw new Error("Categoria não encontrada.");
     validateTransaction(input, category.type);
-    this.requireAccount(input.accountId);
+    this.requireActiveAccount(input.accountId);
 
     const now = new Date().toISOString();
     const description = input.description ?? "";
@@ -213,8 +236,8 @@ class SqlFinanceRepository implements FinanceRepository {
   addTransfer(input: NewTransfer): Transfer {
     const legs = buildTransfer({ ...input, description: input.description ?? "" });
     return this.db.transaction(() => {
-      this.requireAccount(input.fromAccountId);
-      this.requireAccount(input.toAccountId);
+      this.requireActiveAccount(input.fromAccountId);
+      this.requireActiveAccount(input.toAccountId);
       const [row] = this.db.all<{ next: number }>("SELECT COALESCE(MAX(transfer_group_id), 0) + 1 AS next FROM transactions");
       const groupId = row?.next ?? 1;
       const now = new Date().toISOString();
@@ -239,6 +262,63 @@ class SqlFinanceRepository implements FinanceRepository {
       [accountId],
     );
     return account.opening_balance_cents + (row?.total ?? 0);
+  }
+
+  getTransaction(id: number): TransactionListItem {
+    const item = this.listTransactions({ id })[0];
+    if (!item) throw new Error("Lançamento não encontrado.");
+    return item;
+  }
+
+  updateTransaction(id: number, input: NewIncomeOrExpense | NewTransfer): void {
+    const current = this.getTransaction(id);
+    const now = new Date().toISOString();
+    if ("fromAccountId" in input) {
+      if (current.transferGroupId === null) throw new Error("Este lançamento não é uma transferência.");
+      const groupId = current.transferGroupId;
+      const [outflow, inflow] = buildTransfer({ ...input, description: input.description ?? "" });
+      this.db.transaction(() => {
+        this.requireActiveAccountOrSame(input.fromAccountId, groupId, -1);
+        this.requireActiveAccountOrSame(input.toAccountId, groupId, 1);
+        for (const leg of [outflow, inflow]) {
+          this.db.run(
+            `UPDATE transactions SET account_id = ?, amount_cents = ?, description = ?, transaction_date = ?, updated_at = ?
+              WHERE transfer_group_id = ? AND (amount_cents < 0) = ?`,
+            [leg.accountId, leg.amountCents, leg.description, leg.date, now, groupId, leg.amountCents < 0 ? 1 : 0],
+          );
+        }
+      });
+      return;
+    }
+    if (current.transferGroupId !== null) throw new Error("Uma transferência não pode virar receita ou despesa.");
+    const category = this.db.all<{ type: CategoryType }>("SELECT type FROM categories WHERE id = ?", [input.categoryId])[0];
+    if (!category) throw new Error("Categoria não encontrada.");
+    validateTransaction(input, category.type);
+    if (input.accountId === current.accountId) this.requireAccount(input.accountId);
+    else this.requireActiveAccount(input.accountId);
+    this.db.run(
+      `UPDATE transactions SET account_id = ?, category_id = ?, type = ?, amount_cents = ?, description = ?,
+              transaction_date = ?, status = ?, updated_at = ? WHERE id = ?`,
+      [input.accountId, input.categoryId, input.type, input.amountCents, input.description ?? "", input.date, input.status ?? "posted", now, id],
+    );
+  }
+
+  renameAccount(id: number, name: string): void {
+    this.requireAccount(id);
+    if (name.trim().length === 0) throw new Error("O nome da conta não pode ficar vazio.");
+    this.db.run("UPDATE accounts SET name = ? WHERE id = ?", [name.trim(), id]);
+  }
+
+  setAccountActive(id: number, active: boolean): void {
+    this.requireAccount(id);
+    this.db.run("UPDATE accounts SET is_active = ? WHERE id = ?", [active ? 1 : 0, id]);
+  }
+
+  deleteAccount(id: number): void {
+    this.requireAccount(id);
+    const [row] = this.db.all<{ total: number }>("SELECT COUNT(*) AS total FROM transactions WHERE account_id = ?", [id]);
+    if ((row?.total ?? 0) > 0) throw new Error("A conta tem lançamentos: arquive-a em vez de excluir.");
+    this.db.run("DELETE FROM accounts WHERE id = ?", [id]);
   }
 
   deleteTransaction(id: number): void {
@@ -269,12 +349,19 @@ class SqlFinanceRepository implements FinanceRepository {
     return { incomeCents, expenseCents, resultCents: incomeCents - expenseCents };
   }
 
-  listAccounts(): Account[] {
+  listAccounts(options: ListAccountsOptions = {}): Account[] {
     return this.db
-      .all<{ id: number; name: string; type: AccountType; opening_balance_cents: number }>(
-        "SELECT id, name, type, opening_balance_cents FROM accounts WHERE is_active = 1 ORDER BY id",
+      .all<{ id: number; name: string; type: AccountType; opening_balance_cents: number; is_active: number }>(
+        `SELECT id, name, type, opening_balance_cents, is_active FROM accounts
+          ${options.includeArchived ? "" : "WHERE is_active = 1"} ORDER BY id`,
       )
-      .map((row) => ({ id: row.id, name: row.name, type: row.type, openingBalanceCents: row.opening_balance_cents }));
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        openingBalanceCents: row.opening_balance_cents,
+        isActive: row.is_active === 1,
+      }));
   }
 
   listCategories(): Category[] {
@@ -323,7 +410,7 @@ class SqlFinanceRepository implements FinanceRepository {
     );
   }
 
-  listTransactions(filter: TransactionFilter = {}): TransactionListItem[] {
+  listTransactions(filter: TransactionFilter & { id?: number } = {}): TransactionListItem[] {
     const where: string[] = [];
     const params: SqlValue[] = [];
     if (filter.month !== undefined) {
@@ -331,9 +418,22 @@ class SqlFinanceRepository implements FinanceRepository {
       where.push("substr(t.transaction_date, 1, 7) = ?");
       params.push(filter.month);
     }
+    if (filter.id !== undefined) {
+      where.push("t.id = ?");
+      params.push(filter.id);
+    }
     if (filter.accountId !== undefined) {
       where.push("t.account_id = ?");
       params.push(filter.accountId);
+    }
+    if (filter.categoryId !== undefined) {
+      where.push("(t.category_id = ? OR c.parent_id = ?)");
+      params.push(filter.categoryId, filter.categoryId);
+    }
+    const search = filter.search?.trim();
+    if (search) {
+      where.push("(instr(lower(t.description), lower(?)) > 0 OR instr(lower(COALESCE(c.name, '')), lower(?)) > 0)");
+      params.push(search, search);
     }
     let limit = "";
     if (filter.limit !== undefined) {
@@ -377,6 +477,22 @@ class SqlFinanceRepository implements FinanceRepository {
         status: row.status,
         transferGroupId: row.transfer_group_id,
       }));
+  }
+
+  private requireActiveAccount(id: number): void {
+    const account = this.db.all<{ is_active: number }>("SELECT is_active FROM accounts WHERE id = ?", [id])[0];
+    if (!account) throw new Error("Conta não encontrada.");
+    if (account.is_active !== 1) throw new Error("Conta arquivada: não recebe novos lançamentos.");
+  }
+
+  /** Aceita a conta que a perna já usa (mesmo arquivada) ou exige uma conta ativa. */
+  private requireActiveAccountOrSame(accountId: number, groupId: number, sign: -1 | 1): void {
+    const same = this.db.all<{ id: number }>(
+      "SELECT id FROM transactions WHERE transfer_group_id = ? AND account_id = ? AND (amount_cents < 0) = ?",
+      [groupId, accountId, sign < 0 ? 1 : 0],
+    )[0];
+    if (same) this.requireAccount(accountId);
+    else this.requireActiveAccount(accountId);
   }
 
   private requireAccount(id: number): { opening_balance_cents: number } {

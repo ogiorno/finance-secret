@@ -9,6 +9,7 @@ export {
   type Category,
   type CategorySpend,
   type FinanceRepository,
+  type ListAccountsOptions,
   type MonthSummary,
   type NewAccount,
   type NewCategory,
