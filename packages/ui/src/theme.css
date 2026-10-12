@@ -52,6 +52,19 @@
   --chart-6: oklch(0.55 0.03 255);
 
   --shadow-color: oklch(0.2 0.03 255 / 8%);
+
+  /* Altura dos controles; maior em telas de toque (alvo de 44 px). */
+  --control-h: 2.25rem;
+  --control-h-sm: 2rem;
+  --control-h-lg: 2.5rem;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-h: 2.75rem;
+    --control-h-sm: 2.75rem;
+    --control-h-lg: 3rem;
+  }
 }
 
 /* 2. Tokens, escuro ---------------------------------------------------- */
@@ -131,6 +144,15 @@
   --shadow-xs: 0 1px 2px 0 var(--shadow-color);
   --shadow-sm: 0 1px 3px 0 var(--shadow-color), 0 1px 2px -1px var(--shadow-color);
   --shadow-md: 0 4px 8px -2px var(--shadow-color);
+
+  --spacing-control: var(--control-h);
+  --spacing-control-sm: var(--control-h-sm);
+  --spacing-control-lg: var(--control-h-lg);
+
+  --text-page-title: 1.5rem;
+  --text-page-title--line-height: 2rem;
+  --text-section-title: 1.125rem;
+  --text-section-title--line-height: 1.75rem;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
