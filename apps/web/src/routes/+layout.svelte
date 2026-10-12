@@ -16,6 +16,8 @@
     Sparkles,
     Sun,
     TableProperties,
+    Target,
+    Waypoints,
     Wallet,
   } from "@lucide/svelte";
   import { Alert, AppShell, Button, IconButton, Menu, MonthStepper, Toaster, getStoredTheme, setTheme, type AppNavSection } from "@finance/ui";
@@ -31,7 +33,9 @@
         { href: "/", label: "Painel", icon: LayoutDashboard },
         { href: "/transactions", label: "Lançamentos", shortLabel: "Lançar", icon: ArrowLeftRight },
         { href: "/accounts", label: "Contas", icon: Wallet },
-        { href: "/recurring", label: "Contas fixas", icon: Repeat, disabledHint: "Em breve" },
+        { href: "/bills", label: "A pagar e receber", shortLabel: "Fixas", icon: Repeat },
+        { href: "/goals", label: "Metas", icon: Target },
+        { href: "/flow", label: "Fluxo do dinheiro", shortLabel: "Fluxo", icon: Waypoints },
         { href: "/receipts", label: "Cupons", icon: Receipt, disabledHint: "Em breve" },
       ],
     },
@@ -76,7 +80,7 @@
     ...(session.isOpen ? [{ label: "Exportar este banco", icon: Save, onselect: () => session.exportFile(), separated: true }] : []),
   ]);
 
-  const showPeriod = $derived(session.isOpen && (page.url.pathname === "/" || page.url.pathname.startsWith("/transactions")));
+  const showPeriod = $derived(session.isOpen && (page.url.pathname === "/" || page.url.pathname.startsWith("/transactions") || page.url.pathname.startsWith("/bills") || page.url.pathname.startsWith("/flow")));
 </script>
 
 <svelte:window

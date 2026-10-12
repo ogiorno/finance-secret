@@ -5,11 +5,17 @@
     kind: TransactionKind;
     accountId: number;
     toAccountId: number;
-    categoryId: number;
+    /** Sem categoria, o lançamento fica em "Sem categoria". */
+    categoryId: number | undefined;
     amountCents: number;
     date: string;
     description: string;
     pending: boolean;
+    /** `undefined` = padrão do tipo da conta; `null` = sem método. */
+    paymentMethod: PaymentMethod | null | undefined;
+    isExtra: boolean;
+    /** Só receita: `undefined` = fonte padrão; `null` = sem fonte. */
+    sourceId: number | null | undefined;
   }
 
   export interface TransactionFormInitial {
@@ -21,23 +27,31 @@
     date: string;
     description: string;
     pending: boolean;
+    /** `auto` (padrão da conta), `none` (sem método) ou um método. */
+    paymentMethod: string;
+    isExtra: boolean;
+    /** `auto` (fonte padrão), `none` (sem fonte) ou o id da fonte. */
+    sourceId: string;
   }
 </script>
 
 <script lang="ts">
-  import { parseBRLToCents } from "@finance/core";
-  import type { Account, Category } from "@finance/database";
-  import { Alert, Button, Checkbox, Field, Input, Label, NativeSelect, SegmentedControl } from "@finance/ui";
+  import { isPaymentMethod, parseBRLToCents, PAYMENT_METHOD_LABELS, PAYMENT_METHODS, type PaymentMethod } from "@finance/core";
+  import type { Account, Category, IncomeSource } from "@finance/database";
+  import { Alert, Button, Checkbox, Disclosure, Field, Input, Label, NativeSelect, SegmentedControl } from "@finance/ui";
 
   let {
     accounts,
     categories,
+    sources = [],
     initial,
     editing = false,
     onsubmit,
     oncancel,
   }: {
     accounts: Account[];
+    /** Fontes de renda ativas, para as receitas. */
+    sources?: IncomeSource[];
     categories: (Category & { label: string })[];
     initial: TransactionFormInitial;
     /** Edição não oferece "Salvar e adicionar outro". */
@@ -55,7 +69,7 @@
   /* svelte-ignore state_referenced_locally */
   let toAccountId = $state(initial.toAccountId);
   /* svelte-ignore state_referenced_locally */
-  let categoryId = $state(initial.categoryId);
+  let categoryId = $state(categories.find((category) => String(category.id) === initial.categoryId)?.isSystem ? "" : initial.categoryId);
   /* svelte-ignore state_referenced_locally */
   let amount = $state(initial.amount);
   /* svelte-ignore state_referenced_locally */
@@ -64,10 +78,23 @@
   let description = $state(initial.description);
   /* svelte-ignore state_referenced_locally */
   let pending = $state(initial.pending);
+  /* svelte-ignore state_referenced_locally */
+  let paymentMethod = $state(initial.paymentMethod);
+  /* svelte-ignore state_referenced_locally */
+  let isExtra = $state(initial.isExtra);
+  /* svelte-ignore state_referenced_locally */
+  let sourceId = $state(initial.sourceId);
+  const today = new Date();
+  const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  // As opções avançadas já abrem quando o lançamento tem algo fora do padrão.
+  /* svelte-ignore state_referenced_locally */
+  let advancedOpen = $state(
+    initial.date !== todayText || initial.description !== "" || initial.pending || initial.isExtra || initial.paymentMethod !== "auto" || initial.sourceId !== "auto",
+  );
   let error = $state<string | null>(null);
   let amountError = $state<string | null>(null);
 
-  const categoryOptions = $derived(categories.filter((category) => category.type === kind));
+  const categoryOptions = $derived(categories.filter((category) => category.type === kind && !category.isSystem));
 
   function formatAmount() {
     const cents = parseBRLToCents(amount);
@@ -88,11 +115,14 @@
         kind,
         accountId: Number(accountId),
         toAccountId: Number(toAccountId),
-        categoryId: Number(categoryId),
+        categoryId: categoryId === "" ? undefined : Number(categoryId),
         amountCents: cents,
         date,
         description,
         pending,
+        paymentMethod: paymentMethod === "auto" ? undefined : isPaymentMethod(paymentMethod) ? paymentMethod : null,
+        isExtra: kind === "expense" && isExtra,
+        sourceId: kind !== "income" || sourceId === "auto" ? undefined : sourceId === "none" ? null : Number(sourceId),
       },
       addAnother,
     );
@@ -140,25 +170,50 @@
     {:else}
       <Field label="Categoria">
         {#snippet control(field)}
-          <NativeSelect {...field} bind:value={categoryId} required>
-            <option value="" disabled>Selecione</option>
+          <NativeSelect {...field} bind:value={categoryId}>
+            <option value="">Sem categoria</option>
             {#each categoryOptions as category (category.id)}<option value={String(category.id)}>{category.label}</option>{/each}
           </NativeSelect>
         {/snippet}
       </Field>
     {/if}
   </div>
-  <div class="grid gap-4 sm:grid-cols-2">
-    <Field label="Data">
-      {#snippet control(field)}<Input {...field} type="date" bind:value={date} required />{/snippet}
+  {#if kind === "income" && sources.length > 1}
+    <Field label="Fonte da renda">
+      {#snippet control(field)}
+        <NativeSelect {...field} bind:value={sourceId}>
+          <option value="auto">Padrão (Eu)</option>
+          {#each sources.filter((source) => !source.isDefault) as source (source.id)}<option value={String(source.id)}>{source.name}</option>{/each}
+          <option value="none">Sem fonte</option>
+        </NativeSelect>
+      {/snippet}
     </Field>
-    <Field label="Descrição">
-      {#snippet control(field)}<Input {...field} bind:value={description} placeholder="Opcional" />{/snippet}
-    </Field>
-  </div>
-  {#if kind !== "transfer"}
-    <Label class="font-normal"><Checkbox bind:checked={pending} /> Ainda não aconteceu (pendente)</Label>
   {/if}
+  <Disclosure label="Opções avançadas" bind:open={advancedOpen}>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Field label="Data">
+        {#snippet control(field)}<Input {...field} type="date" bind:value={date} required />{/snippet}
+      </Field>
+      <Field label="Descrição">
+        {#snippet control(field)}<Input {...field} bind:value={description} placeholder="Opcional" />{/snippet}
+      </Field>
+    </div>
+    {#if kind !== "transfer"}
+      <Field label="Método de pagamento">
+        {#snippet control(field)}
+          <NativeSelect {...field} bind:value={paymentMethod}>
+            <option value="auto">Automático (conforme a conta)</option>
+            <option value="none">Sem método</option>
+            {#each PAYMENT_METHODS as method (method)}<option value={method}>{PAYMENT_METHOD_LABELS[method]}</option>{/each}
+          </NativeSelect>
+        {/snippet}
+      </Field>
+      <Label class="font-normal"><Checkbox bind:checked={pending} /> Ainda não aconteceu (pendente)</Label>
+    {/if}
+    {#if kind === "expense"}
+      <Label class="font-normal"><Checkbox bind:checked={isExtra} /> Despesa extra (imprevisto)</Label>
+    {/if}
+  </Disclosure>
   {#if error}<Alert variant="destructive" role="alert">{error}</Alert>{/if}
   <div class="flex flex-wrap justify-end gap-2">
     <Button type="button" variant="ghost" onclick={oncancel}>Cancelar</Button>

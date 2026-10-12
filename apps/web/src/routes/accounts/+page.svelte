@@ -21,6 +21,8 @@
     PageHeader,
     toast,
   } from "@finance/ui";
+  import AccountTypesCard from "$lib/AccountTypesCard.svelte";
+  import IncomeSourcesCard from "$lib/IncomeSourcesCard.svelte";
   import { accountTypeStyle } from "$lib/category-style";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { session } from "$lib/session.svelte";
@@ -185,6 +187,10 @@
       {/each}
     </div>
   {/if}
+
+  <IncomeSourcesCard />
+
+  <AccountTypesCard />
 
   <Dialog bind:open={createOpen} title="Nova conta">
     <form class="grid gap-4" onsubmit={create}>

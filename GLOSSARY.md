@@ -51,8 +51,48 @@ A supermarket purchase proof, read from the QR Code printed on it. It becomes on
 _Avoid_: Invoice, note, cupom
 
 **Recurring bill**:
-A payment the user expects to make again and again, such as a subscription or rent. Each one is either Fixed (necessary) or Discretionary (a luxury that could be dropped) and has a Category. It describes an expectation; it is not a Transaction and never counts in balances.
+A payment the user expects to make again and again, such as a subscription or rent. Each one is either Fixed (necessary) or Discretionary (a luxury that could be dropped), has a Category and an expected amount that can change over time. It describes an expectation; it is not a Transaction and never counts in balances until the user marks a month as paid, which creates one expense Transaction.
 _Avoid_: Debt, subscription, liability
+
+**Occurrence**:
+A Recurring bill expected in one month (`YYYY-MM`): Pending, Overdue (the due date has passed) or Paid (it has a linked Transaction). Computed from the bill; stored only once paid.
+_Avoid_: Installment, instance
+
+**Item**:
+One line of detail of a Transaction: product, quantity and unit price. Items are optional and informative; balances and totals always use the Transaction's own amount, and the difference to the sum of the Items is only shown.
+_Avoid_: Product, line, receipt item
+
+**Payment method**:
+How the money left an Account: debit, credit, Pix, boleto, meal voucher, cash or other. Optional, filled in from the Account type by default, and never changes balances. The Account is still the origin of the money.
+_Avoid_: Payment type, origin
+
+**Extra**:
+An expense the user marks as an unplanned expense of the month. It keeps its own Category and still counts as a normal expense; the dashboard just also totals the Extras.
+_Avoid_: Unexpected, emergency
+
+**Goal**:
+A named jar of money the user is saving towards (a trip, an emergency fund), with an optional target and deadline. A Goal is not an Account: the money stays where it is, the Goal only reserves part of it. It is Active, Executed (the money was spent on the objective, which releases the reservation) or Archived.
+_Avoid_: Savings account, envelope, budget
+
+**Contribution**:
+An amount put into a Goal (or taken out, as a withdrawal) on a date. It is not a Transaction: it moves no money between Accounts and is never income or expense, so it changes no balance, Receitas, Despesas or Resultado. A Goal's total can never go negative.
+_Avoid_: Deposit, allocation, Transaction
+
+**Reserved**:
+The sum saved in all Active Goals. **Free** is the total balance minus Reserved (it can be negative, which only warns). "Livre depois das contas" also discounts the bills still to pay in the month.
+_Avoid_: Locked, blocked, available
+
+**Source**:
+Who or where an income comes from (the user, their spouse, a rental). Every income Transaction points to one; the default Source "Eu" receives the ones without a choice. A Source is not an Account: money from the spouse enters the user's Account as the user's income, never as a Transfer.
+_Avoid_: Origin, payer, income account
+
+**Recurring income**:
+An income the user expects again and again, such as a salary or the spouse's monthly contribution. It mirrors a Recurring bill: it has an expected amount that can change over time, a Source and a Category, and only becomes a Transaction when the user marks a month as received.
+_Avoid_: Allowance, scheduled income
+
+**Sem categoria**:
+The system Category (one for expenses, one for income) that receives a Transaction or Recurring bill when no Category is chosen. It cannot be deleted or archived.
+_Avoid_: Uncategorized, other
 
 ### Modes
 

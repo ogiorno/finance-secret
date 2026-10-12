@@ -1,5 +1,7 @@
 Status: ready-for-agent
 
+> **Atualização:** a leitura de Receipt (QR Code, link ou foto) continua no escopo, mas o ponto de entrada é a **página de Lançamentos** (botão "Importar cupom" ao lado de "Novo lançamento"), porque o cupom gera uma Transaction. Os itens do cupom passam a ser os `transaction_items` genéricos (spec `bills-and-transaction-details`), e a Account é obrigatória na prévia. **Recurring bills** foram absorvidas pela spec `bills-and-transaction-details`.
+
 # Cupons, Assistant, vários bancos e configurações (Fase 3.5)
 
 ## Problem Statement

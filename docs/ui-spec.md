@@ -28,7 +28,7 @@ Atualização em 2026-10-11 após a implementação das melhorias de UI/UX.
 1. **Compor, nunca estilizar.** Tela monta componentes de `@finance/ui`. Faltou um: cria em `packages/ui` primeiro, com variantes e só tokens.
 2. **Lista primeiro, formulário sob demanda.** O que o usuário consulta ocupa a tela; criar e editar abrem em Dialog (desktop) ou Sheet (celular).
 3. **Cor nunca sozinha.** Sinal `+`/`−`, ícone ou texto acompanham cor (já vale para `Money` e gráficos).
-4. **Reversível por padrão.** Excluir mostra toast com **Desfazer** (a exclusão só é gravada ao fim de alguns segundos). `ConfirmDialog` fica para o que não dá para desfazer (excluir banco inteiro).
+4. **Confirmar antes de apagar, e ainda poder desfazer.** Todo botão de excluir abre `ConfirmDialog` (com o nome do que será apagado e o efeito, "Cancelar" com o foco inicial). Depois de confirmar, excluir lançamentos ainda mostra toast com **Desfazer** (a exclusão só é gravada ao fim de alguns segundos). Excluir banco inteiro exige digitar o nome.
 5. **Dizer onde se está.** Modo (Offline, Conectado, Desktop) e banco ativo sempre visíveis; alterações não exportadas indicadas no menu, não só num banner.
 6. **Desabilitar com motivo, não esconder.** O que não existe no Offline mode (importar cupom, Assistant) aparece desabilitado com "Disponível no modo conectado".
 7. **Toque primeiro.** Alvos de pelo menos 44 px em `pointer: coarse`; barra inferior no celular com ícone e rótulo curto.
@@ -92,7 +92,7 @@ Tema; provedor de IA (URL base, chave mascarada com "Trocar", modelo, botão **T
 
 - **Ícones**: `@lucide/svelte` adotado.
 - **Marca**: identidade verde-água mantida no tema.
-- **Exclusão**: gravação adiada por cinco segundos, com `Desfazer`; a exportação aguarda o resultado.
+- **Exclusão**: sempre pede confirmação (`ConfirmDialog`); depois, gravação adiada por cinco segundos, com `Desfazer`; a exportação aguarda o resultado.
 - **Atalhos de teclado** (`n`, `?`): ficam para uma etapa futura. A navegação básica e o diálogo já funcionam por teclado.
 
 ## 8. Definição de pronto para uma tela

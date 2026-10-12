@@ -4,6 +4,7 @@
   import { cn } from "../cn";
   import Card from "./Card.svelte";
   import IconChip, { type IconChipTone } from "./IconChip.svelte";
+  import InfoTip from "./InfoTip.svelte";
 
   type Icon = Component<{ class?: string; "aria-hidden"?: boolean | "true" | "false" }>;
 
@@ -15,6 +16,7 @@
     children,
     trend,
     hint,
+    info,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     label: string;
@@ -27,6 +29,8 @@
     trend?: Snippet;
     /** Texto de apoio abaixo do valor. */
     hint?: Snippet;
+    /** Explicação curta do cálculo: aparece como um "i" ao lado do rótulo. */
+    info?: string;
   } = $props();
 </script>
 
@@ -35,6 +39,7 @@
     <span class="flex items-center gap-2">
       {#if icon}<IconChip {icon} {tone} size="sm" />{/if}
       {label}
+      {#if info}<InfoTip text={info} label={`Sobre ${label}`} />{/if}
     </span>
     {#if trend}{@render trend()}{/if}
   </div>

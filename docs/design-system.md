@@ -36,7 +36,7 @@ Azul de tecnologia como cor primária, verde para receita e um vermelho forte pa
 
 ## Componentes
 
-`Button`, `IconButton`, `Badge`, `Card` (+ `CardHeader/Title/Description/Content/Footer`), `Input`, `Textarea`, `NativeSelect`, `Checkbox`, `SegmentedControl`, `Label`, `Field`, `Alert`, `Skeleton`, `Separator`, `Progress`, `Table` (+ partes), `PageHeader`, `EmptyState`, `Link`, `MonthStepper`.
+`Button`, `IconButton`, `Badge`, `Card` (+ `CardHeader/Title/Description/Content/Footer`), `Input`, `Textarea`, `NativeSelect`, `Checkbox`, `SegmentedControl`, `Label`, `Field`, `Alert`, `Skeleton`, `Separator`, `Progress`, `Table` (+ partes), `PageHeader`, `EmptyState`, `Link`, `MonthStepper`, `Disclosure` (seção recolhida, como "Opções avançadas"), `InfoTip` ("i" que explica um número em uma ou duas frases; `Kpi` aceita `info`).
 
 Overlays (bits-ui): `Dialog` (folha no celular, diálogo no desktop), `ConfirmDialog` (com `requireText` para exclusões graves), `Menu`, `Toaster` + `toast.show(...)` (com ação "Desfazer").
 

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { ArrowDownRight, ArrowUpRight, Scale, Utensils, Wallet } from "@lucide/svelte";
   import {
+    Badge,
+    Button,
     Card,
     CardContent,
     CardHeader,
@@ -8,24 +10,49 @@
     CountUp,
     EmptyState,
     IconChip,
+    InfoTip,
     Kpi,
     Link,
     Money,
     PageHeader,
+    Progress,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
     toneForName,
     TrendBadge,
   } from "@finance/ui";
   import CashFlowChart from "$lib/CashFlowChart.svelte";
+  import RollForwardDialog from "$lib/RollForwardDialog.svelte";
   import { BAR_CLASS, categoryStyle } from "$lib/category-style";
+  import { todayLocal } from "$lib/local-date";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { period } from "$lib/period.svelte";
   import SpendingChart from "$lib/SpendingChart.svelte";
   import { session } from "$lib/session.svelte";
   import TransactionList from "$lib/TransactionList.svelte";
 
+  /** Os `count` meses que terminam em `month` (`YYYY-MM`), do mais antigo ao mais novo. */
+  function lastMonths(month: string, count: number): string[] {
+    const [year = 0, mon = 1] = month.split("-").map(Number);
+    return Array.from({ length: count }, (_, index) => {
+      const date = new Date(year, mon - 1 - (count - 1 - index), 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    });
+  }
+
   function change(current: number, previous: number): number | null {
     return previous > 0 ? ((current - previous) / previous) * 100 : null;
   }
+
+  let rollOpen = $state(false);
+  const monthLabel = $derived.by(() => {
+    const [year = 0, mon = 1] = period.month.split("-").map(Number);
+    return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(year, mon - 1, 1));
+  });
 
   const view = $derived.by(() => {
     void session.revision;
@@ -40,7 +67,8 @@
 
     const summary = repo.getMonthSummary(month);
     const previous = repo.getMonthSummary(period.previous);
-    const items = repo.listTransactions({ month, limit: 5000 });
+    const activeAccounts = new Set(repo.listAccounts().map((account) => account.id));
+    const items = repo.listTransactions({ month, limit: 5000 }).filter((item) => activeAccounts.has(item.accountId));
 
     // O mês começa zerado no dia 1 e acumula; depois de hoje (mês corrente) a linha termina.
     const perDay = Array.from({ length: daysInMonth }, () => ({ income: 0, expense: 0 }));
@@ -62,6 +90,13 @@
       incomeTrend: change(summary.incomeCents, previous.incomeCents),
       expenseTrend: change(summary.expenseCents, previous.expenseCents),
       balance: repo.getTotalBalance(),
+      roll: repo.getMonthRollForward(month),
+      extras: repo.getMonthExtras(month),
+      toReceive: repo.getIncomeExpectations(month, todayLocal()).remainingCents,
+      reserved: repo.getReservedSummary(),
+      hasGoals: repo.listGoals().length > 0,
+      incomeMonths: lastMonths(month, 6),
+      incomeBySource: repo.getIncomeBySource(lastMonths(month, 6)[0] ?? month, month),
       spending: repo.getExpensesByCategory(month),
       usage: repo.getAccountTypeUsage(month),
       recent: items.slice(0, 6),
@@ -99,22 +134,70 @@
 
   <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
     <div class="animate-rise" style="animation-delay: 0ms">
-      <Kpi label="Saldo total" icon={Wallet} tone="primary"><CountUp cents={view.balance} tone="auto" /></Kpi>
+      <Kpi
+        label="Saldo total"
+        icon={Wallet}
+        tone="primary"
+        info="Soma do saldo das suas contas ativas. Cartões e empréstimos entram como dívida (negativo). Não inclui bens nem lançamentos pendentes."
+      ><CountUp cents={view.balance} tone="auto" /></Kpi>
     </div>
     <div class="animate-rise" style="animation-delay: 60ms">
-      <Kpi label="Receitas" icon={ArrowUpRight} tone="income">
+      <Kpi
+        label="Receitas do mês"
+        icon={ArrowUpRight}
+        tone="income"
+        info="Dinheiro que entrou no mês escolhido. Transferências entre suas contas e lançamentos pendentes não contam."
+      >
         <CountUp cents={view.summary.incomeCents} tone="income" />
         {#snippet trend()}{#if view.incomeTrend !== null}<TrendBadge percent={view.incomeTrend} />{/if}{/snippet}
+        {#snippet hint()}
+          <span class="flex items-center gap-1">
+            A receber: <Money cents={view.toReceive} />
+            <InfoTip
+              text="O que as suas receitas recorrentes ainda vão trazer neste mês. Só entra nas Receitas do mês quando você marca como recebida."
+              label="Sobre o que falta receber"
+            />
+          </span>
+        {/snippet}
       </Kpi>
     </div>
     <div class="animate-rise" style="animation-delay: 120ms">
-      <Kpi label="Despesas" icon={ArrowDownRight} tone="expense">
+      <Kpi
+        label="Despesas do mês"
+        icon={ArrowDownRight}
+        tone="expense"
+        info="Dinheiro que saiu no mês escolhido, no dia em que foi pago. Contas ainda não pagas, transferências e lançamentos pendentes não contam."
+      >
         <CountUp cents={view.summary.expenseCents} tone="expense" />
         {#snippet trend()}{#if view.expenseTrend !== null}<TrendBadge percent={view.expenseTrend} goodWhen="down" />{/if}{/snippet}
+        {#snippet hint()}
+          <span class="flex items-center gap-1">
+            Extras do mês: <Money cents={view.extras} tone="expense" />
+            <InfoTip
+              text="Imprevistos do mês: despesas que você marcou como extras. Já estão somadas nas despesas, na sua categoria de sempre."
+              label="Sobre extras do mês"
+            />
+          </span>
+        {/snippet}
       </Kpi>
     </div>
     <div class="animate-rise" style="animation-delay: 180ms">
-      <Kpi label="Resultado" icon={Scale} tone="transfer"><CountUp cents={view.summary.resultCents} tone="auto" showSign /></Kpi>
+      <Kpi
+        label="Resultado do mês"
+        icon={Scale}
+        tone="transfer"
+        info="Receitas menos despesas do mês. Se for positivo, sobrou dinheiro; se for negativo, você gastou mais do que recebeu."
+      >
+        <CountUp cents={view.summary.resultCents} tone="auto" showSign />
+        {#snippet trend()}
+          {#if view.summary.resultCents > 0}<Badge variant="income">Sobrou</Badge>
+          {:else if view.summary.resultCents < 0}<Badge variant="expense">Faltou</Badge>{/if}
+        {/snippet}
+        {#snippet hint()}
+          Receitas − Despesas ·
+          <Button variant="link" size="sm" class="h-auto p-0 text-xs" onclick={() => (rollOpen = true)}>Como chegamos neste saldo</Button>
+        {/snippet}
+      </Kpi>
     </div>
   </div>
 
@@ -151,6 +234,31 @@
         </Card>
       {/each}
 
+      {#if view.hasGoals}
+        <Card class="animate-rise" style="animation-delay: 330ms">
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">Metas</CardTitle>
+          </CardHeader>
+          <CardContent class="grid gap-2">
+            <div class="flex items-center justify-between gap-2 text-sm">
+              <span class="flex items-center gap-1 text-muted-foreground">
+                Reservado
+                <InfoTip text="Dinheiro que você separou nas metas ativas. Ele continua nas suas contas; o saldo total não muda." label="Sobre o reservado" />
+              </span>
+              <Money class="font-semibold" cents={view.reserved.reservedCents} />
+            </div>
+            <div class="flex items-center justify-between gap-2 text-sm">
+              <span class="flex items-center gap-1 text-muted-foreground">
+                Livre
+                <InfoTip text="Seu saldo total menos o que está reservado nas metas." label="Sobre o livre" />
+              </span>
+              <Money class="font-semibold" cents={view.reserved.freeCents} tone="auto" />
+            </div>
+            <Link href="/goals" class="text-sm">Ver metas</Link>
+          </CardContent>
+        </Card>
+      {/if}
+
       <Card class="animate-rise" style="animation-delay: 360ms">
         <CardHeader><CardTitle>Despesas por categoria</CardTitle></CardHeader>
         <CardContent>
@@ -182,8 +290,56 @@
     </div>
   </div>
 
+  {#if view.incomeBySource.length > 0}
+    {@const thisMonth = view.incomeBySource.filter((row) => row.month === period.month)}
+    {@const sourceNames = [...new Map(view.incomeBySource.map((row) => [row.sourceId, row.sourceName])).entries()]}
+    {@const monthTotal = thisMonth.reduce((total, row) => total + row.totalCents, 0)}
+    <Card class="mt-4 animate-rise" style="animation-delay: 400ms">
+      <CardHeader><CardTitle>Receitas por fonte</CardTitle></CardHeader>
+      <CardContent class="grid gap-4">
+        {#if thisMonth.length === 0}
+          <p class="text-sm text-muted-foreground">Nenhuma receita recebida neste mês.</p>
+        {:else}
+          <ul class="grid gap-2.5">
+            {#each thisMonth as row (row.sourceId)}
+              <li class="grid gap-1">
+                <div class="flex items-center gap-2 text-sm">
+                  <span class="flex-1 truncate">{row.sourceName}</span>
+                  <Money cents={row.totalCents} tone="income" class="font-medium" />
+                </div>
+                <Progress value={row.totalCents} max={monthTotal} aria-label={`${row.sourceName}: parte das receitas do mês`} />
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Mês</TableHead>
+              {#each sourceNames as [id, name] (id)}<TableHead class="text-right">{name}</TableHead>{/each}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each [...view.incomeMonths].reverse().filter((key) => view.incomeBySource.some((row) => row.month === key)) as monthKey (monthKey)}
+              <TableRow>
+                <TableCell>{monthKey.slice(5, 7)}/{monthKey.slice(0, 4)}</TableCell>
+                {#each sourceNames as [id] (id)}
+                  <TableCell class="text-right">
+                    <Money cents={view.incomeBySource.find((row) => row.month === monthKey && row.sourceId === id)?.totalCents ?? 0} />
+                  </TableCell>
+                {/each}
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  {/if}
+
   <Card class="mt-4 animate-rise" style="animation-delay: 420ms">
     <CardHeader><CardTitle>Últimos lançamentos</CardTitle></CardHeader>
     <CardContent class="px-0"><TransactionList items={view.recent} emptyTitle="Nada lançado neste mês." /></CardContent>
   </Card>
+
+  <RollForwardDialog bind:open={rollOpen} roll={view.roll} monthLabel={monthLabel} />
 {/if}

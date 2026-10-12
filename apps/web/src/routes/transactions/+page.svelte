@@ -1,23 +1,29 @@
 <script lang="ts">
   import { Plus, Search, X } from "@lucide/svelte";
+  import { isPaymentMethod, PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@finance/core";
   import type { TransactionListItem } from "@finance/database";
   import {
     Button,
     Card,
     CardContent,
+    Checkbox,
+    ConfirmDialog,
     Dialog,
     EmptyState,
     IconButton,
     Input,
+    Label,
     Link,
     NativeSelect,
     PageHeader,
+    formatBRL,
     toast,
   } from "@finance/ui";
   import { onDestroy } from "svelte";
   import OpenDatabasePanel from "$lib/OpenDatabasePanel.svelte";
   import { period } from "$lib/period.svelte";
   import { session } from "$lib/session.svelte";
+  import TransactionDetail from "$lib/TransactionDetail.svelte";
   import TransactionForm, { type TransactionFormInitial, type TransactionFormValues } from "$lib/TransactionForm.svelte";
   import TransactionList from "$lib/TransactionList.svelte";
 
@@ -31,10 +37,15 @@
 
   let filterAccount = $state("");
   let filterCategory = $state("");
+  let filterMethod = $state("");
+  let filterSource = $state("");
+  let onlyExtra = $state(false);
   let search = $state("");
   let limit = $state(PAGE_SIZE);
 
   let formOpen = $state(false);
+  let detailOpen = $state(false);
+  let detail = $state<TransactionListItem | null>(null);
   let editing = $state<TransactionListItem | null>(null);
   let formInitial = $state<TransactionFormInitial>(blank());
 
@@ -53,14 +64,22 @@
       month: period.month,
       accountId: filterAccount ? Number(filterAccount) : undefined,
       categoryId: filterCategory ? Number(filterCategory) : undefined,
+      paymentMethod: isPaymentMethod(filterMethod) ? filterMethod : undefined,
+      sourceId: filterSource ? Number(filterSource) : undefined,
+      onlyExtra: onlyExtra || undefined,
       search: search || undefined,
       limit: limit + 1,
     });
     return {
+      sources: repo.listIncomeSources(),
       accounts: repo.listAccounts(),
       categories: categories.map((category) => ({
         ...category,
-        label: category.parentId ? `${byId.get(category.parentId)?.name ?? ""} › ${category.name}` : category.name,
+        label: category.isSystem
+          ? `${category.name} (${category.type === "expense" ? "despesa" : "receita"})`
+          : category.parentId
+            ? `${byId.get(category.parentId)?.name ?? ""} › ${category.name}`
+            : category.name,
       })),
       items: found.slice(0, limit),
       hasMore: found.length > limit,
@@ -68,16 +87,33 @@
   });
 
   const visible = $derived(data?.items.filter((item) => !(deleteKey(item) in pendingDeletes)) ?? []);
-  const hasFilters = $derived(filterAccount !== "" || filterCategory !== "" || search !== "");
+  const hasFilters = $derived(filterAccount !== "" || filterCategory !== "" || filterMethod !== "" || filterSource !== "" || onlyExtra || search !== "");
 
   function blank(): TransactionFormInitial {
-    return { kind: "expense", accountId: lastAccount, toAccountId: "", categoryId: "", amount: "", date: todayText, description: "", pending: false };
+    return {
+      kind: "expense",
+      accountId: lastAccount,
+      toAccountId: "",
+      categoryId: "",
+      amount: "",
+      date: todayText,
+      description: "",
+      pending: false,
+      paymentMethod: "auto",
+      isExtra: false,
+      sourceId: "auto",
+    };
   }
 
   function openNew() {
     editing = null;
     formInitial = blank();
     formOpen = true;
+  }
+
+  function openDetail(item: TransactionListItem) {
+    detail = item;
+    detailOpen = true;
   }
 
   function openEdit(item: TransactionListItem) {
@@ -97,6 +133,9 @@
         date: item.date,
         description: item.description,
         pending: false,
+        paymentMethod: "auto",
+        isExtra: false,
+        sourceId: "auto",
       };
     } else {
       initial = {
@@ -108,6 +147,9 @@
         date: item.date,
         description: item.description,
         pending: item.status === "pending",
+        paymentMethod: item.paymentMethod ?? "none",
+        isExtra: item.isExtra,
+        sourceId: item.type !== "income" ? "auto" : item.sourceId === null ? "none" : String(item.sourceId),
       };
     }
     editing = item;
@@ -137,6 +179,9 @@
             date: values.date,
             description: values.description,
             status: values.pending ? ("pending" as const) : ("posted" as const),
+            paymentMethod: values.paymentMethod,
+            isExtra: values.isExtra,
+            sourceId: values.sourceId,
           };
           if (editing) repo.updateTransaction(editing.id, entry);
           else repo.addTransaction(entry);
@@ -157,6 +202,20 @@
     const { [key]: _removed, ...rest } = pendingDeletes;
     pendingDeletes = rest;
     session.change((repo) => repo.deleteTransaction(item.id));
+  }
+
+  // Excluir sempre pede confirmação; depois dela ainda há alguns segundos para desfazer.
+  let confirmOpen = $state(false);
+  let confirming = $state<TransactionListItem | null>(null);
+
+  function askDelete(item: TransactionListItem) {
+    confirming = item;
+    confirmOpen = true;
+  }
+
+  function confirmDelete() {
+    if (confirming) remove(confirming);
+    confirming = null;
   }
 
   function remove(item: TransactionListItem) {
@@ -183,6 +242,9 @@
   function clearFilters() {
     filterAccount = "";
     filterCategory = "";
+    filterMethod = "";
+    filterSource = "";
+    onlyExtra = false;
     search = "";
     limit = PAGE_SIZE;
   }
@@ -216,6 +278,17 @@
       <option value="">Todas as categorias</option>
       {#each data.categories as category (category.id)}<option value={String(category.id)}>{category.label}</option>{/each}
     </NativeSelect>
+    <NativeSelect class="w-44" aria-label="Filtrar por método de pagamento" bind:value={filterMethod} onchange={() => (limit = PAGE_SIZE)}>
+      <option value="">Todos os métodos</option>
+      {#each PAYMENT_METHODS as method (method)}<option value={method}>{PAYMENT_METHOD_LABELS[method]}</option>{/each}
+    </NativeSelect>
+    {#if data.sources.length > 1}
+      <NativeSelect class="w-44" aria-label="Filtrar por fonte de renda" bind:value={filterSource} onchange={() => (limit = PAGE_SIZE)}>
+        <option value="">Todas as fontes</option>
+        {#each data.sources as source (source.id)}<option value={String(source.id)}>{source.name}</option>{/each}
+      </NativeSelect>
+    {/if}
+    <Label class="font-normal"><Checkbox bind:checked={onlyExtra} onCheckedChange={() => (limit = PAGE_SIZE)} /> Só extras</Label>
     {#if hasFilters}<IconButton icon={X} label="Limpar filtros" onclick={clearFilters} />{/if}
   </div>
 
@@ -224,7 +297,7 @@
       {#if visible.length === 0 && hasFilters}
         <EmptyState title="Nada encontrado." description="Nenhum lançamento combina com os filtros deste mês." />
       {:else}
-        <TransactionList items={visible} onEdit={openEdit} onDelete={remove} emptyTitle="Nada lançado neste mês." />
+        <TransactionList items={visible} onOpen={openDetail} onEdit={openEdit} onDelete={askDelete} emptyTitle="Nada lançado neste mês." />
       {/if}
       {#if data.hasMore}
         <div class="flex justify-center px-5 pt-4"><Button variant="outline" onclick={() => (limit += PAGE_SIZE)}>Carregar mais</Button></div>
@@ -232,11 +305,27 @@
     </CardContent>
   </Card>
 
+  <TransactionDetail bind:open={detailOpen} item={detail} onEdit={openEdit} onDelete={askDelete} />
+
+  <ConfirmDialog
+    bind:open={confirmOpen}
+    title={confirming?.type === "transfer" ? "Excluir esta transferência?" : "Excluir este lançamento?"}
+    description={confirming
+      ? confirming.type === "transfer"
+        ? `${confirming.description || "Transferência"}: as duas pontas serão apagadas e os saldos das duas contas voltam ao que eram.`
+        : `${confirming.description || confirming.categoryName || "Lançamento"} de ${formatBRL(confirming.amountCents)} em ${confirming.accountName} será apagado e o saldo da conta volta ao que era.`
+      : undefined}
+    confirmLabel="Excluir"
+    destructive
+    onconfirm={confirmDelete}
+  />
+
   <Dialog bind:open={formOpen} title={editing ? "Editar lançamento" : "Novo lançamento"}>
     {#key `${editing?.id ?? "new"}-${formOpen}`}
       <TransactionForm
         accounts={data.accounts}
         categories={data.categories}
+        sources={data.sources}
         initial={formInitial}
         editing={editing !== null}
         onsubmit={save}
