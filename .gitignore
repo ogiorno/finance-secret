@@ -3,12 +3,12 @@ data/
 backups/
 .env
 .env.*
+# Nenhum banco SQLite vai para o Git. A demonstração (static/demo.db) é gerada por `npm run demo-db` no build.
 *.db
 *.sqlite
 .svelte-kit/
 build/
 dist/
-!apps/web/static/demo.db
 test-results/
 playwright-report/
 .wrangler/
